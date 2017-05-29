@@ -2,7 +2,7 @@
 
 library(ggplot2)
 library(caret)
-
+library(data.table)
 # --- check if still used
 
 library(knitr)
@@ -63,7 +63,30 @@ if (length(distinct_art_sold) != length(unique(art_sales_df$article))) {
 # when program tested free memory here
 #remove(sales_df); remove(articles_df)
 
+# -------------------------------------------------------------------
+#                 WHAT DRIVES SALES
+# taken as: which country, product group, category, article sell the most
+# -------------------------------------------------------------------
 
+art_sales_dt <-  data.table(art_sales_df)
+
+sales_country <- art_sales_dt[ , list(sales = sum(sales)), by=list(country)]
+sales_country <- sales_country[order(-rank(sales))]
+
+sales_prodgroup <- art_sales_dt[ , list(sales = sum(sales)), by=list(productgroup)]
+sales_prodgroup <- sales_prodgroup[order(-rank(sales))]
+
+sales_prodgrpcat <- art_sales_dt[ , list(sales = sum(sales)), by=list(productgroup,category)]
+sales_prodgrpcat <- sales_prodgrpcat[order(-rank(sales))]
+
+
+sales_prodcat <- art_sales_dt[ , list(sales = sum(sales)), by=list(category)]
+sales_prodcat <- sales_prodcat[order(-rank(sales))]
+
+
+sales_article <- art_sales_dt[ , list(sales = sum(sales)), by=list(article)]
+sales_article <- sales_article[order(-rank(sales))]
+head(sales_article)
 
 
 # -------------------------------------------------------------------
