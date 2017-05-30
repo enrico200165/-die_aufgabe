@@ -33,7 +33,8 @@ articles_df <- read.csv(articles_fname, sep = field_sep)
 articles_df$article <- as.character(articles_df$article)
 str(articles_df)
 
-if (!exists("sales_df") || is.null(sales_df) || !is.data.frame(sales_df) || nrow(sales_df) <= 0) {
+
+if (!exists(deparse(substitute(sales_df))) || is.null(sales_df) || !is.data.frame(sales_df) || nrow(sales_df) <= 0) {
   print(paste("reading:",sales_fname))
   sales_df <- read.csv(sales_fname, sep = field_sep)
   # article IDs should not be factors
@@ -75,7 +76,10 @@ colnames(art_sales_df)[which(colnames(art_sales_df) == "promo2")] <- "promo_stor
 
 # -------------- add variables --------------------------------------
 
-art_sales_df$promo_status <- ifelse(,,)
+art_sales_df$promo_status <- ifelse(art_sales_df$promo_media == 1
+  ,ifelse(art_sales_df$promo_store == 1,"multi","media")
+  ,ifelse(art_sales_df$promo_store == 1,"store","none"))
+
 art_sales_df$discount <- 999999999
 art_sales_df$profit <- 999999999
 
