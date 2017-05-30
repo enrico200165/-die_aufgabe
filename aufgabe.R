@@ -45,6 +45,9 @@ if (!exists("sales_df") || is.null(sales_df) || !is.data.frame(sales_df) || nrow
 str(sales_df)
 
 
+
+
+
 # -------------------- join ----------------------------------------- 
 # for now inner join, no check for eventual bad sales with article not in master 
 
@@ -60,8 +63,22 @@ if (length(distinct_art_sold) != length(unique(art_sales_df$article))) {
         ,"\nNB just the first ones as a sample, check for others")
 }
 
+
+# -------------------- change to more human names ------------------- 
+colnames(art_sales_df)[which(colnames(art_sales_df) == "promo1")] <- "promo_media"
+colnames(art_sales_df)[which(colnames(art_sales_df) == "promo2")] <- "promo_store"
+
+
+
 # when program tested free memory here
 #remove(sales_df); remove(articles_df)
+
+# -------------- add variables --------------------------------------
+
+art_sales_df$promo_status <- ifelse(,,)
+art_sales_df$discount <- 999999999
+art_sales_df$profit <- 999999999
+
 
 # -------------------------------------------------------------------
 #                 WHAT DRIVES SALES
