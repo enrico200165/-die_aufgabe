@@ -64,6 +64,10 @@ if (length(distinct_art_sold) != length(unique(art_sales_df$article))) {
         ,"\nNB just the first ones as a sample, check for others")
 }
 
+# -- adjust dates ---
+art_sales_df$retailweek <- strptime(as.character(art_sales_df$retailweek), "%Y-%m-%d")
+art_sales_df$retailweek <- art_sales_df$retailweek[order(art_sales_df$retailweek)]
+# head(art_sales_df$retailweek);tail(art_sales_df$retailweek) # paranoid check
 
 # -------------------- change to more human names ------------------- 
 colnames(art_sales_df)[which(colnames(art_sales_df) == "promo1")] <- "promo_media"
@@ -77,8 +81,10 @@ colnames(art_sales_df)[which(colnames(art_sales_df) == "promo2")] <- "promo_stor
 # -------------- add variables --------------------------------------
 
 art_sales_df$promo_status <- ifelse(art_sales_df$promo_media == 1
-  ,ifelse(art_sales_df$promo_store == 1,"multi","media")
+  ,ifelse(art_sales_df$promo_store == 1,"both","media")
   ,ifelse(art_sales_df$promo_store == 1,"store","none"))
+art_sales_df$promo_status <- as.factor(art_sales_df$promo_status)
+art_sales_df$promo_status <- relevel(art_sales_df$promo_status, ref="none")
 
 art_sales_df$discount <- 999999999
 art_sales_df$profit <- 999999999
@@ -88,6 +94,8 @@ art_sales_df$profit <- 999999999
 #                 WHAT DRIVES SALES
 # taken as: which country, product group, category, article sell the most
 # -------------------------------------------------------------------
+
+# --- simply check averages
 
 art_sales_dt <-  data.table(art_sales_df)
 
@@ -108,6 +116,37 @@ sales_prodcat <- sales_prodcat[order(-rank(sales))]
 sales_article <- art_sales_dt[ , list(sales = sum(sales)), by=list(article)]
 sales_article <- sales_article[order(-rank(sales))]
 head(sales_article)
+
+
+# -------------------------------------------------------------------
+#                 EFFECT OF PROMOTIONS
+# -------------------------------------------------------------------
+
+
+# --- t test for each promo type against no promo
+
+# media only, exclude if also store promo
+art_sales_df$promo_media_only <- (art_sales_df$promo_status == "media")*1
+promo_media_only_ttest <- t.test(sales ~ promo_media_only, data = art_sales_df)
+
+# store only, exclude if also media promo
+art_sales_df$promo_store_only <- (art_sales_df$promo_status == "store")*1
+promo_store_only_ttest <- t.test(sales ~ promo_store_only, data = art_sales_df)
+
+# overlapping promos, both media and store
+art_sales_df$promo_both <- (art_sales_df$promo_status == "both")*1
+promo_both_ttest <- t.test(sales ~ promo_both, data = art_sales_df)
+
+# --- simply average by group
+sales_promo <- art_sales_dt[ , list(sales_mean = mean(sales)), by=list(promo_status)]
+sales_promo <- sales_promo[order(-rank(sales_mean))]
+
+
+# --------------------------------------------------------------------
+#                     PREDICT
+# --------------------------------------------------------------------
+
+fit <- lm(sales ~ promo_media + promo_store, data = art_sales_df)
 
 
 # -------------------------------------------------------------------
