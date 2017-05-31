@@ -116,10 +116,13 @@ art_sales_df$promo_status <- relevel(art_sales_df$promo_status, ref="none")
 
 # ------------------- EXPLORATION -----------------------------------
 
-grp <- group_by(art_sales_df,retailweek)
-smrz <- summarize(grp, sales = sum(sales))
-qplot(y = sales, x= retailweek, data = smrz)
-
+if (FALSE) {
+  grp <- group_by(art_sales_df,retailweek)
+  smrz <- summarize(grp, sales = sum(sales))
+  qplot(y = sales, x= retailweek, data = smrz)
+  qplot(y = log(sales), x= retailweek, data = smrz)
+}
+print("no seasonality seems present on plot of total sales per week")
 
 # -------------------------------------------------------------------
 #                 messages
@@ -152,14 +155,13 @@ sales_prodgroup <- sales_prodgroup[order(-rank(sales))]
 sales_prodgrpcat <- art_sales_dt[ , list(sales = sum(sales)), by=list(productgroup,category)]
 sales_prodgrpcat <- sales_prodgrpcat[order(-rank(sales))]
 
-
 sales_prodcat <- art_sales_dt[ , list(sales = sum(sales)), by=list(category)]
 sales_prodcat <- sales_prodcat[order(-rank(sales))]
 
-
 sales_article <- art_sales_dt[ , list(sales = sum(sales)), by=list(article)]
 sales_article <- sales_article[order(-rank(sales))]
-head(sales_article)
+
+# head(sales_article)
 
 # -------------------------------------------------------------------
 #                 EFFECT OF DISCOUNTS
@@ -194,13 +196,13 @@ rbind(head(art_sales_df$sales_disc_adjust),head(art_sales_df$sales),head(art_sal
 
 promo_fit <- lm(sales_disc_adjust ~ promo_status, data = art_sales_df)
 # par(mfrow = c(2,2)) ;plot(promo_fit)
+
 print(paste("mean sales without promotions",coef(promo_fit)[1]))
 
 print(paste("media promos effective? support by data: "
             ,(summary(promo_fit)$coefficients[3,4] < alpha )
             ,"p value: ", summary(promo_fit)$coefficients[3,4],
             "average sales increase: ", round(summary(promo_fit)$coefficients[3,1],2)))
-
 
 print(paste("store+media promos effective? support by data: "
             ,(summary(promo_fit)$coefficients[2,4] < alpha )
@@ -211,14 +213,28 @@ print(paste("store promos effective? support by data: "
             ,(summary(promo_fit)$coefficients[4,4] < alpha )
             ,"p value: ", summary(promo_fit)$coefficients[4,4]))
 
+# will be used to remove promo effects from sales to produce data for forecast
+# based only on time series and sales (adjusted removing discount and promos effect)
+lift_promo_store <- 1 # data do not support lift p > alpha
+lift_promo_media <- (coef(promo_fit)[1]+summary(promo_fit)$coefficients[3,1])/coef(promo_fit)[1]
+lift_promo_both <- (coef(promo_fit)[1]+summary(promo_fit)$coefficients[2,1])/coef(promo_fit)[1]
+
 
 # --------------------------------------------------------------------
 #                     PREDICT
 # --------------------------------------------------------------------
 
-# pairs(art_sales_df[c(3,4)], pch = 18)
+# from sales with discount effect already removed, remove promo effect
+adjust_by_promo <- function(sales, promo) { 
+  if (promo == "none") return(sales);
+  if (promo == "media") return(sales/lift_promo_media);
+  if (promo == "both")  return(sales/lift_promo_both);
+  if (promo == "store")  return(sales/lift_promo_store);
+  stop(paste("should never get here, promo =",promo))
+}
 
-# fit <- lm(sales ~ promo_media_only + promo_store_only + promo_both_only + ratio, data = art_sales_df)
+art_sales_df$sales_adjust_fully <- mapply(adjust_by_promo,art_sales_df$sales_disc_adjust,art_sales_df$promo_status)
+
 
 # -------------------------------------------------------------------
 #  junk to remove
