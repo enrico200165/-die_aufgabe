@@ -14,6 +14,7 @@ library(dplyr)
 # -------------------------------------------------------------------
 
 alpha <- 0.05
+cap <- FALSE
 
 articles_fname <- "article_master.txt"
 sales_fname <- "sales.txt"
@@ -60,8 +61,16 @@ cat("countries present in data:",as.character(unique(sales_df$country)),"\n")
 cat("sales: non complete cases present: ", any(!complete.cases(sales_df)),"\n")
 cat("articles: non complete cases present: ", any(!complete.cases(articles_df)),"\n")
 
-
 # -------------------- PREPROCESSING --------------------------------
+
+# capping of outliers, in sales
+if (cap) {
+  qnt <- quantile(sales_df$sales, probs=c(.25, .75), na.rm = T)
+  H <- 1.5 * IQR(sales_df$sales, na.rm = T)
+  outl <- which(sales_df$sales > (qnt[2] + H))
+  if(any(outl)) sales_df[outl, ]$sales <- (qnt[2] + H-1)
+}
+
 # for now inner join, no check for eventual bad sales with article not in master 
 
 distinct_art_sold <- unique(sales_df$article)
@@ -77,7 +86,7 @@ if (length(distinct_art_sold) != length(unique(art_sales_df$article))) {
 }
 
 # -- ensure dates have date type ---
-art_sales_df$retailweek <- strptime(as.character(art_sales_df$retailweek), "%Y-%m-%d")
+art_sales_df$retailweek <- as.POSIXct(strptime(as.character(art_sales_df$retailweek), "%Y-%m-%d"))
 art_sales_df$retailweek <- art_sales_df$retailweek[order(art_sales_df$retailweek)]
 # head(art_sales_df$retailweek);tail(art_sales_df$retailweek) # paranoid check
 
@@ -102,25 +111,14 @@ art_sales_df$promo_status <- ifelse(art_sales_df$promo_media == 1
   ,ifelse(art_sales_df$promo_store == 1,"store","none"))
 art_sales_df$promo_status <- as.factor(art_sales_df$promo_status)
 
-# currently not used, relevel just  just in case
 art_sales_df$promo_status <- relevel(art_sales_df$promo_status, ref="none")
-
-# --- redundant, at end of development evaluate removing them
-art_sales_df$promo_media_only <- (art_sales_df$promo_status == "media")*1
-art_sales_df$promo_store_only <- (art_sales_df$promo_status == "store")*1
-art_sales_df$promo_both_only  <- (art_sales_df$promo_status == "both")*1
-art_sales_df$promo_any_only   <- (art_sales_df$promo_status != "none")*1
 
 
 # ------------------- EXPLORATION -----------------------------------
 
-# description does not specify is media promotion are tied to a price discount
-# informal check of correlation, for all promotype as we are at it
-plot(art_sales_df$promo_status,art_sales_df$discount)
-disc_promo_any_ttest   <- t.test(art_sales_df$discount ~ as.factor(art_sales_df$promo_any_only))
-disc_promo_media_ttest <- t.test(art_sales_df$discount ~ as.factor(art_sales_df$promo_media_only))
-disc_promo_store_ttest <- t.test(art_sales_df$discount ~ as.factor(art_sales_df$promo_store_only))
-disc_promo_both_ttest  <- t.test(art_sales_df$discount ~ as.factor(art_sales_df$promo_both_only))
+grp <- group_by(art_sales_df,retailweek)
+smrz <- summarize(grp, sales = sum(sales))
+qplot(y = sales, x= retailweek, data = smrz)
 
 
 # -------------------------------------------------------------------
@@ -169,12 +167,17 @@ head(sales_article)
 
 art_sales_nopromo_df <- art_sales_df[ art_sales_df$promo_status == "none"  ,  ]
 discount_fit <- lm(sales ~ I(discount*100), data = art_sales_nopromo_df)
+# visual check if assumptions old
+# par(mfrow = c(2,2)) ;plot(discount_fit)
+
 cat("simplest possible approach, consider only price, analyze data without promotions")
 cat("effect of discount on sales supported by data: "
     ,summary(discount_fit)$coefficient[2,4] < alpha
     ,  "\n1% increases in discount modifies average sales of: "
     ,coef(discount_fit)[2],"items")
 
+# for usage further down
+discount_factor <- coef(discount_fit)[2]
 
 
 # -------------------------------------------------------------------
@@ -182,14 +185,16 @@ cat("effect of discount on sales supported by data: "
 # -------------------------------------------------------------------
 
 print("promotion effectiveness analysis, simplest possible approach")
-print("all other factors ignored, in particulra discount, so this analysis is inaccurate")
-warning("effect of discount has been estimated above so adjusting for it is simple")
-warning("but am short of time, do it at the end if there is time")
+print("all other factors ignored, an adjustment for discount is implemented")
 
+# add var for sales with effect of discount removed
+art_sales_df$sales_disc_adjust <- art_sales_df$sales-(art_sales_df$discount*discount_factor)
+# paranoid check
+rbind(head(art_sales_df$sales_disc_adjust),head(art_sales_df$sales),head(art_sales_df$discount))
 
-promo_fit <- lm(sales ~ promo_status, data = art_sales_df)
-
-print(paste("mean sales without promotions",coef(promo_fit)[1,1]))
+promo_fit <- lm(sales_disc_adjust ~ promo_status, data = art_sales_df)
+# par(mfrow = c(2,2)) ;plot(promo_fit)
+print(paste("mean sales without promotions",coef(promo_fit)[1]))
 
 print(paste("media promos effective? support by data: "
             ,(summary(promo_fit)$coefficients[3,4] < alpha )
@@ -211,7 +216,7 @@ print(paste("store promos effective? support by data: "
 #                     PREDICT
 # --------------------------------------------------------------------
 
-pairs(art_sales_df[c(3,4)], pch = 18)
+# pairs(art_sales_df[c(3,4)], pch = 18)
 
 # fit <- lm(sales ~ promo_media_only + promo_store_only + promo_both_only + ratio, data = art_sales_df)
 
