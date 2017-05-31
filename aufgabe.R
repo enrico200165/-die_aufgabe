@@ -193,6 +193,17 @@ print(paste("store promos effective? support by data: "
             ,"p value: ", summary(promo_fit)$coefficients[4,4]))
 
 
+# -------------------------------------------------------------------
+#                 EFFECT OF PROMOTIONS
+# -------------------------------------------------------------------
+
+art_sales_nopromo_df <- art_sales_df[ art_sales_df$promo_status == "none"  ,  ]
+discount_fit <- lm(sales ~ I(discount*100), data = art_sales_nopromo_df)
+cat("simplest possible approach, consider only price, analyze data without promotions")
+cat("effect of discount on sales supported by data: "
+            ,summary(discount_fit)$coefficient[2,4] < alpha
+       ,  "\n1% increases in discount modifies average sales of: "
+      ,coef(discount_fit)[2],"items")
 
 
 # --------------------------------------------------------------------
