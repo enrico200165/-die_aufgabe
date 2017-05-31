@@ -101,13 +101,15 @@ art_sales_df$promo_status <- ifelse(art_sales_df$promo_media == 1
   ,ifelse(art_sales_df$promo_store == 1,"both","media")
   ,ifelse(art_sales_df$promo_store == 1,"store","none"))
 art_sales_df$promo_status <- as.factor(art_sales_df$promo_status)
+
+# currently not used, relevel just  just in case
 art_sales_df$promo_status <- relevel(art_sales_df$promo_status, ref="none")
 
-# --- redundant, eventually to remove at end of development
+# --- redundant, at end of development evaluate removing them
 art_sales_df$promo_media_only <- (art_sales_df$promo_status == "media")*1
 art_sales_df$promo_store_only <- (art_sales_df$promo_status == "store")*1
 art_sales_df$promo_both_only  <- (art_sales_df$promo_status == "both")*1
-art_sales_df$promo_any_only   <- (art_sales_df$promo_status!= "none")*1
+art_sales_df$promo_any_only   <- (art_sales_df$promo_status != "none")*1
 
 
 # ------------------- EXPLORATION -----------------------------------
@@ -119,6 +121,19 @@ disc_promo_any_ttest   <- t.test(art_sales_df$discount ~ as.factor(art_sales_df$
 disc_promo_media_ttest <- t.test(art_sales_df$discount ~ as.factor(art_sales_df$promo_media_only))
 disc_promo_store_ttest <- t.test(art_sales_df$discount ~ as.factor(art_sales_df$promo_store_only))
 disc_promo_both_ttest  <- t.test(art_sales_df$discount ~ as.factor(art_sales_df$promo_both_only))
+
+
+# -------------------------------------------------------------------
+#                 messages
+# -------------------------------------------------------------------
+print("- not analyzing per article, will probably use \"ratio\" as a pseudoprice for all articles")
+
+print("- not using time series")
+print("  for simplicity assuming sales do not depend on time, strong assumption that")
+print("  might be not unrealistic considering that")
+print("  stagionality analysis are not performed for lack of my time and real world background info")
+print("  the period is not extensive and that in such period the \"context\" should not change ")
+print("  (for economy of France this might be more uncertain")
 
 
 # -------------------------------------------------------------------
@@ -153,24 +168,40 @@ head(sales_article)
 #                 EFFECT OF PROMOTIONS
 # -------------------------------------------------------------------
 
+# --- simplest approach possible
 
-# --- t test for each promo status
-sales_promo_media_only_ttest <- t.test(sales ~ promo_media_only, data = art_sales_df)
-sales_store_only_ttest <- t.test(sales ~ promo_store_only, data = art_sales_df)
-sales_both_only_ttest  <- t.test(sales ~ promo_both_only,  data = art_sales_df)
-sales_any_only_ttest  <- t.test(sales  ~ promo_any_only,  data = art_sales_df)
+print("promotion effectiveness analysis, simplest possible approach, all other factors")
+print("(ex. discount) ignored")
 
-# --- simply average by group
-sales_promo <- art_sales_dt[ , list(sales_mean = mean(sales)), by=list(promo_status)]
-sales_promo <- sales_promo[order(-rank(sales_mean))]
+promo_fit <- lm(sales ~ promo_status, data = art_sales_df)
+
+print(paste("mean sales without promotions",coef(promo_fit)[1,1]))
+
+print(paste("media promos effective? support by data: "
+            ,(summary(promo_fit)$coefficients[3,4] < alpha )
+            ,"p value: ", summary(promo_fit)$coefficients[3,4],
+            "average sales increase: ", round(summary(promo_fit)$coefficients[3,1],2)))
+
+
+print(paste("store+media promos effective? support by data: "
+            ,(summary(promo_fit)$coefficients[2,4] < alpha )
+            ,"p value: ", summary(promo_fit)$coefficients[2,4],
+            "average sales increase: ", round(summary(promo_fit)$coefficients[2,1],2)))
+
+print(paste("store promos effective? support by data: "
+            ,(summary(promo_fit)$coefficients[4,4] < alpha )
+            ,"p value: ", summary(promo_fit)$coefficients[4,4]))
+
+
 
 
 # --------------------------------------------------------------------
 #                     PREDICT
 # --------------------------------------------------------------------
 
-fit <- lm(sales ~ promo_media + promo_store, data = art_sales_df)
+pairs(art_sales_df[c(3,4)], pch = 18)
 
+# fit <- lm(sales ~ promo_media_only + promo_store_only + promo_both_only + ratio, data = art_sales_df)
 
 # -------------------------------------------------------------------
 #  junk to remove
