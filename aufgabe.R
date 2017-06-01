@@ -90,6 +90,25 @@ art_sales_df$retailweek <- as.POSIXct(strptime(as.character(art_sales_df$retailw
 art_sales_df$retailweek <- art_sales_df$retailweek[order(art_sales_df$retailweek)]
 # head(art_sales_df$retailweek);tail(art_sales_df$retailweek) # paranoid check
 
+# --- check if dates are missing
+weeks <- sort(unique(art_sales_df$retailweek))
+# quick check
+days_diff = round(difftime(weeks[length(weeks)], weeks[1], units = "days")) #
+weeks_diff = as.numeric(days_diff/7)
+if (length(weeks) != (weeks_diff+1)) {
+  print("missing weeks")
+} else {
+  week_grp <- group_by(art_sales_df,retailweek)
+  check_weeks <- summarise(week_grp, data_per_week_cnt = n())
+  if (length(unique(check_weeks$data_per_week_cnt)) > 1) {
+     warning(paste("some weeks have less data, data counts: "
+                   ,unique(check_weeks$data_per_week_cnt)))
+  } else {
+    cat("quick&dirty check ok: no missing weeks, all weeks same # of data points:"
+          ,unique(check_weeks$data_per_week_cnt))
+  }
+}
+
 # -------------------- make var names more readable ------------------- 
 
 colnames(art_sales_df)[which(colnames(art_sales_df) == "promo1")] <- "promo_media"
