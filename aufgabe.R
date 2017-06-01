@@ -286,28 +286,26 @@ week_sales <- summarise(week_grp, sales = sum(sales_adjust_fully))
 
 # remove week of 2014, at row 1, then the 3rd week in each of the 4 13weeks block
 # that make up a year
-week_sales$week_nr <- c(52,1:52,1:52,1:18)
+week_sales$week_nr <- c(52,1:52,1:52,1:18) # just to debug
 week_2remove_nrow <- c(1,seq(from = 4, to = 123, by = 13))
 week_sales <- week_sales[-week_2remove_nrow, ]
 
+# --- aggregate per year and month 
+week_sales$year <- year(week_sales$retailweek)
+week_sales$month <- month(week_sales$retailweek)
 
-ts_sales <- ts(week_sales$sales, start=c(2014,52),frequency = 52) 
+sales_month_grp <- group_by(week_sales,year,month)
+sales_month <- summarize(sales_month_grp, sales = sum(sales))
+
+ts_sales_m <- ts(sales_month$sales, start=c(2015,1),frequency = 12) 
+plot.ts(ts_sales_m)
 # --- have a look
 # par(mfrow = c(2,3))
-# plot.ts(ts_sales)
+# plot.ts(ts_sales_m)
 # mess around a bit
-# ts_components <- decompose(ts_sales);plot(ts_components)
-# ts_month <- SMA(ts_sales,n=52/12);plot.ts(ts_month)
-# ts_bimonth <- SMA(ts,n=52/12*2);plot.ts(ts_bimonth)
-# ts_q <- SMA(ts,n=52/3);plot.ts(ts_q)
-# ts_half <- SMA(ts,n=52/2);plot.ts(ts_half)
+# ts_components <- decompose(ts_sales_m);plot(ts_components)
 
-
-# trying to use weeks in 2015 and 2016
-# ts_sales_w <- window(ts_sales,start=c(2015,1), end = c(2016,52), frequency = 52)
-# the abo
-# I can't handle data with frequency greater than 24. Seasonality will be ignored. 
-fit_sales <- ets(ts_sales)
+fit_sales <- ets(ts_sales_m)
 
 
 
