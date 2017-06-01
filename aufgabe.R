@@ -1,8 +1,19 @@
 
 
-library(ggplot2)
-library(caret)
 library(data.table)
+
+library(ggplot2)
+library(forecast)
+library(caret)
+
+# dates
+library(lubridate)
+library(xts)
+library(rmeta)
+
+library(TTR)
+
+
 # --- check if still used
 
 library(knitr)
@@ -143,17 +154,18 @@ if (FALSE) {
 }
 print("no seasonality seems present on plot of total sales per week")
 
+
 # -------------------------------------------------------------------
 #                 messages
 # -------------------------------------------------------------------
 print("- not analyzing per article, will probably use \"ratio\" as a pseudoprice for all articles")
 
-print("- not using time series")
-print("  for simplicity assuming sales do not depend on time, strong assumption that")
-print("  might be not unrealistic considering that")
-print("  stagionality analysis are not performed for lack of my time and real world background info")
-print("  the period is not extensive and that in such period the \"context\" should not change ")
-print("  (for economy of France this might be more uncertain")
+# print("- not using time series")
+# print("  for simplicity assuming sales do not depend on time, strong assumption that")
+# print("  might be not unrealistic considering that")
+# print("  stagionality analysis are not performed for lack of my time and real world background info")
+# print("  the period is not extensive and that in such period the \"context\" should not change ")
+# print("  (for economy of France this might be more uncertain")
 
 
 # -------------------------------------------------------------------
@@ -252,7 +264,65 @@ adjust_by_promo <- function(sales, promo) {
   stop(paste("should never get here, promo =",promo))
 }
 
+# remove effect of promos on sales (effect of discount removed previously)
 art_sales_df$sales_adjust_fully <- mapply(adjust_by_promo,art_sales_df$sales_disc_adjust,art_sales_df$promo_status)
+
+week_grp <- group_by(art_sales_df, retailweek)
+week_sales <- summarise(week_grp, sales = sum(sales_adjust_fully))
+
+
+# the quick and reasonably good tool I will use for lack of time is ets(),
+# but if I do
+# ... old code
+# fit_sales <- ets(... )
+# I get:
+# I can't handle data with frequency greater than 24. Seasonality will be ignored. 
+
+# --- quick and dirty non-general fix
+# remove 4 weeks from each year, in a hard-coded way that only works with these data
+# aggregate to time units of 4 weeks
+# for lack of time will not impute  week 52 of 2014, though it would be important
+# give the spikes of sales at end of year shown in the graph
+
+# remove week of 2014, at row 1, then the 3rd week in each of the 4 13weeks block
+# that make up a year
+week_sales$week_nr <- c(52,1:52,1:52,1:18)
+week_2remove_nrow <- c(1,seq(from = 4, to = 123, by = 13))
+week_sales <- week_sales[-week_2remove_nrow, ]
+
+
+ts_sales <- ts(week_sales$sales, start=c(2014,52),frequency = 52) 
+# --- have a look
+# par(mfrow = c(2,3))
+# plot.ts(ts_sales)
+# mess around a bit
+# ts_components <- decompose(ts_sales);plot(ts_components)
+# ts_month <- SMA(ts_sales,n=52/12);plot.ts(ts_month)
+# ts_bimonth <- SMA(ts,n=52/12*2);plot.ts(ts_bimonth)
+# ts_q <- SMA(ts,n=52/3);plot.ts(ts_q)
+# ts_half <- SMA(ts,n=52/2);plot.ts(ts_half)
+
+
+# trying to use weeks in 2015 and 2016
+# ts_sales_w <- window(ts_sales,start=c(2015,1), end = c(2016,52), frequency = 52)
+# the abo
+# I can't handle data with frequency greater than 24. Seasonality will be ignored. 
+fit_sales <- ets(ts_sales)
+
+
+
+# -------------------------------------------------------------------
+#  code for updates
+# -------------------------------------------------------------------
+
+# if(!require(installr)) {
+#   install.packages("installr"); require(installr)
+# } #load / install+load installr
+# updateR() 
+# source("http://bioconductor.org/biocLite.R")
+# bioclite()
+
+
 
 
 # -------------------------------------------------------------------
@@ -308,3 +378,4 @@ art_sales_df$sales_adjust_fully <- mapply(adjust_by_promo,art_sales_df$sales_dis
 # unlink(plot2, force = TRUE)
 # dev.copy2pdf(file=plot2)
 # 
+
