@@ -36,23 +36,24 @@ art_sales_dt <- NULL
 
 france <- "France";germany <-"Germany";austria <-"Austria"; mcountry="mcountry"
 
-results <- data.frame(country = character()
-  ,sales_tot = double(),sales_avg_m = double(), sales_avg_w = double()
-  ,mediap_eff = logical(),mediap_lift = double()
-  ,storep_eff = logical(),storep_lift = double()
-  ,bothp_eff=logical(),bothp_lift =double()
-  ,discount_sales_coeff = double()
+# --- create and init results container
+results_row <- list(
+  sales_tot = -1
+  ,sales_avg_m = -1
+  ,sales_avg_w = -1
+  ,mediap_eff = FALSE
+  ,mediap_lift = -1
+  ,storep_eff = FALSE
+  ,storep_lift = -1
+  ,bothp_eff=FALSE
+  ,bothp_lift = 0
+  ,discount_sales_coeff = 0
   )
-temprow <- matrix(c(rep.int(NA,length(results))),nrow=1,ncol=length(results))
-newrow <- data.frame(temprow)
-colnames(newrow) <- colnames(results)
-results <- rbind(results,newrow,newrow,newrow,newrow)
-
-results[1,]$country <- mcountry;
-results[2,]$country <- germany;
-results[3,]$country <- france;
-results[4,]$country <- austria;
-
+results <- list(
+  Germany = results_row
+  ,France = results_row
+  ,Austria = results_row
+  ,mcountry = results_row)
 
 
 # -------------------------------------------------------------------
@@ -79,14 +80,13 @@ load_preprocess_alldata <- function() {
   
   # check if other countries present besides those requested
   cat("countries present in data:",as.character(unique(sales_df$country)),"\n")
-  
   # check missing data
   cat("sales: non complete cases present: ", any(!complete.cases(sales_df)),"\n")
   cat("articles: non complete cases present: ", any(!complete.cases(articles_df)),"\n")
   
   # -------------------- PREPROCESSING --------------------------------
   
-  # capping of outliers, in sales
+  # eventual capping of sales outliers
   if (cap) {
     qnt <- quantile(sales_df$sales, probs=c(.25, .75), na.rm = T)
     H <- 1.5 * IQR(sales_df$sales, na.rm = T)
@@ -101,7 +101,6 @@ load_preprocess_alldata <- function() {
     msg <- paste("some sales do not correspond to articles in master, nr such sales"
                  ,length(distinct_art_sold) - length(unique(art_sales_df$article))) 
     orphan_sales_articles <- setdiff(distinct_art_sold, unique(art_sales_df$article));
-    
     cat("articles ID in sales data not found in master: ",orphan_sales_articles)
   }
   
@@ -111,8 +110,7 @@ load_preprocess_alldata <- function() {
   # head(art_sales_df$retailweek);tail(art_sales_df$retailweek) # paranoid check
   
   # --- check if dates are missing
-  weeks <- sort(unique(art_sales_df$retailweek))
-  # quick check
+  weeks <- sort(unique(art_sales_df$retailweek)) # try to rewrite with min and max
   days_diff = round(difftime(weeks[length(weeks)], weeks[1], units = "days")) #
   weeks_diff = as.numeric(days_diff/7)
   if (length(weeks) != (weeks_diff+1)) {
@@ -151,7 +149,24 @@ load_preprocess_alldata <- function() {
     qplot(y = log(sales), x= retailweek, data = smrz)
   }
 
-  result[country == mcountry]$  
+
+  # calculate some global values
+  art_sales_dt <<-  data.table(art_sales_df)
+  sales_country <- art_sales_dt[ , list(
+    sales = sum(sales), sales_avg = mean(sales)) 
+    ,by=list(country)]
+  
+  apply(sales_country,1,function(cur_row) { 
+    country <- cur_row[1]
+    results[[country]]$sales_tot <<- as.numeric(cur_row[2]);
+    })
+  
+  sales_tot_allcountries <-sum(art_sales_dt$sales)
+  if (sales_tot_allcountries == (results[[germany]]$sales_tot + results[[france]]$sales_tot + results[[austria]]$sales_tot)) {
+    results[mcountry]$sales_tot <- sales_tot_allcountries;
+  } else {
+    stop("calculation problem, tot sales")
+  }
   
   
   return(art_sales_df)
@@ -171,7 +186,6 @@ analyze <- function(country_name,art_sales_df) {
   
   # --- simply check averages
   
-  art_sales_dt <<-  data.table(art_sales_df)
   
   sales_country <- art_sales_dt[ , list(sales = sum(sales)), by=list(country)]
   sales_country <- sales_country[order(-rank(sales))]
