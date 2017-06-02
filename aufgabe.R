@@ -187,8 +187,11 @@ analyze <- function(country_name,art_sales_df) {
     art_sales_dt <- art_sales_dt[ country == country_name, ,] # redundant, but ...
     # print(paste())
   } 
-  cat("\n",paste("analyzing data for: ",country_name,"nr rows:",nrow(art_sales_dt)))
   
+  cat("\n-----------------------------------------------------------------------------")
+  cat("\nanalyzing data for: ",toupper(country_name),", nr rows:",nrow(art_sales_dt))
+  cat("\n-----------------------------------------------------------------------------\n")
+      
   if (country_name != mcountry &
     nrow(art_sales_df[art_sales_df$country !=  country_name, ]) > 0) {
     stop(paste("internal error: found  data for country other than:",country_name))
@@ -241,43 +244,35 @@ analyze <- function(country_name,art_sales_df) {
   set_discpromos(country_name,"store",summary(fit_promo_disc)$coeff[4, ])
   
 
-  # print("")
-  # print(paste("DISCOUNT     effectiveness supported by data: "
-  #             ,(summary(fit_promo_disc)$coefficients[2,4] < alpha )
-  #             ,"p value:", summary(fit_promo_disc)$coefficients[2,4]
-  #     , "1% discount > delta sales:"
-  #     ,summary(fit_promo_disc)$coefficient[2,1],"items"))
-  # 
-  # print(paste("MEDIA promos effectiveness supported by data: "
-  #             ,(summary(fit_promo_disc)$coefficients[3,4] < alpha )
-  #             ,"p value: ", summary(fit_promo_disc)$coefficients[3,4],
-  #             "average sales increase: ", round(summary(fit_promo_disc)$coefficients[3,1],2)))
-  # 
-  # print(paste("store promos effectiveness supported by data: "
-  #             ,(summary(fit_promo_disc)$coefficients[4,4] < alpha )
-  #             ,"p value: ", summary(fit_promo_disc)$coefficients[4,4],
-  #             "average sales increase: ", round(summary(fit_promo_disc)$coefficients[4,1],2)))
-  # 
-  # print(paste("store promos effectiveness supported by data: "
-  #             ,(summary(fit_promo_disc)$coefficients[4,4] < alpha )
-  #             ,"p value: ", summary(fit_promo_disc)$coefficients[4,4]))
+  cat("DISCOUNT","\neffectiveness supported by data: ",(summary(fit_promo_disc)$coefficients[2,4] < alpha )
+      ,"\n1% discount > delta sales:",summary(fit_promo_disc)$coefficient[2,1],"items"
+      ,"\np value:", summary(fit_promo_disc)$coefficients[2,4])
 
-    
+  cat("\nMEDIA promos","\neffectiveness supported by data: "
+    ,(summary(fit_promo_disc)$coefficients[3,4] < alpha )
+    ,"\naverage sales increase:", round(summary(fit_promo_disc)$coefficients[3,1],2)
+    ,"\np value: ", summary(fit_promo_disc)$coefficients[3,4])
+
+  cat("\nSTORE promos"
+      ,"\neffectiveness supported by data: ",(summary(fit_promo_disc)$coefficients[4,4] < alpha )
+      ,"\naverage sales increase: ", round(summary(fit_promo_disc)$coefficients[4,1],2)
+      ,"\np value: ", summary(fit_promo_disc)$coefficients[4,4]
+  )
 
   # --------------------------------------------------------------------
   #                     PREDICT
   # --------------------------------------------------------------------
   
   # --------------------- STLF, by week --------------------------------
-  
 
+  cat("\n --- predicting for",country_name)
+  
   # --- check if dates are missing
   data_weeks_avail = length(unique(art_sales_df$retailweek))
   days_diff = round(difftime(max(art_sales_df$retailweek),min(art_sales_df$retailweek), units = "days"))
   data_weeks_expected <- round(days_diff/7) + 1
   if (data_weeks_avail != data_weeks_expected) {
-    warning(cat("expected data weeks:",data_weeks_expected,"found",data_weeks_avail))
-    # return(0)
+    warning(paste("\n",country_name," expected data weeks:",data_weeks_expected,"found",data_weeks_avail))
   } else {
     week_grp <- group_by(art_sales_df,retailweek)
     check_weeks <- summarise(week_grp, data_per_week_cnt = n())
@@ -286,65 +281,56 @@ analyze <- function(country_name,art_sales_df) {
                     ,unique(check_weeks$data_per_week_cnt)))
     }
   }
-  
-  
-  
-  week_grp <- group_by(art_sales_df, retailweek)
-  week_sales <- summarise(week_grp, sales = sum(sales))
+
+  week_sales <- summarise(group_by(art_sales_df, retailweek), sales = sum(sales))
   sales_avg_week <- mean(week_sales$sales)
   
-  print(paste("predicing for",country_name))
-  ts_sales_w <- ts(week_sales$sales, start=c(2014,52),frequency = 52) 
-  stlf_w <- stlf(ts_sales_w, h=5);
-  cat("\n",country_name,"weekly forecasts (stlf)")
-  print(stlf_w$mean[c(1:5)])
-  # plot(stlf_w);Sys.sleep(10)
+  predict_weeks_nr <- 5
+  if (country_name != france) {
+    ts_sales_w <- ts(week_sales$sales, start=c(2014,52),frequency = 52) 
+    stlf_w <- stlf(ts_sales_w, h=predict_weeks_nr);
+    cat("\n",country_name," weekly forecasts (stlf), next",predict_weeks_nr,"weeks:",stlf_w$mean[c(1:5)]
+        ,"\n(the weekly mean is: ",sales_avg_week,")")
+    if (data_weeks_avail != data_weeks_expected) {
+      cat("\nFORECAST above is UNRELIABLE due to ",data_weeks_expected-data_weeks_avail,"missing week")
+    }
+    # plot(stlf_w);Sys.sleep(10)
+  } else {
+    warning(country_name," not 2 periods available, not performing stlf prediction")
+  }
+
+  # --------------------- ETS prediction, using 4weeks ----------------
+
+  # old adjustment used in old approach of 4w months+48weeks year, kept just in case
+  # week_2remove_nrow <- c(1,seq(from = 4, to = 123, by = 13))
+  # week_sales <- week_sales[-week_2remove_nrow, ] # now 48 weeks per year
   
-  return(0)
-  
-  # --------------------- ETS -----------------------------------------
-  # the quick and reasonably good tool I will use for lack of time is ets(),
-  # but if I do
-  # ... old code
-  # fit_sales <- ets(... )
-  # I get:
-  # I can't handle data with frequency greater than 24. Seasonality will be ignored. 
-  
-  # --- quick and dirty non-general fix
-  # remove 4 weeks from each year, in a hard-coded way that only works with these data
-  # aggregate to time units of 4 weeks
-  # for lack of time will not impute  week 52 of 2014, though it would be important
-  # give the spikes of sales at end of year shown in the graph
-  
-  # remove week of 2014, at row 1, then the 3rd week in each of the 4 13weeks block
-  # that make up a year
-  week_sales$week_nr <- c(52,1:52,1:52,1:18) # just to debug
-  week_2remove_nrow <- c(1,seq(from = 4, to = 123, by = 13))
-  week_sales <- week_sales[-week_2remove_nrow, ] # now 48 weeks per year
-  
-  # --- aggregate per year and month 
-  week_sales$year <- year(week_sales$retailweek)
+  # --- aggregate per year and month, add these variables 
+  week_sales$year <- year(week_sales$retailweek); 
   week_sales$month <- month(week_sales$retailweek)
-  
-  sales_month_grp <- group_by(week_sales,year,month)
-  sales_month <- summarize(sales_month_grp, sales = sum(sales))
+  # --- calculate averages
+  sales_month <- summarize(group_by(week_sales,year,month), sales = sum(sales))
   sales_avg_month <- mean(sales_month$sales)
   
   ts_sales_m <- ts(sales_month$sales, start=c(2015,1),frequency = 12) 
-  plot.ts(ts_sales_m)
   # --- have a look
-  # par(mfrow = c(2,3))
-  # plot.ts(ts_sales_m)
-  # mess around a bit
+  # par(mfrow = c(2,3)); plot.ts(ts_sales_m)
   # ts_components <- decompose(ts_sales_m);plot(ts_components)
   
   fit_sales <- ets(ts_sales_m)
-  fcast <- forecast(fit_sales, h = 3)
-  print("monthly forecasts (ets)")
-  print(fcast$mean[1])
-  par(mfrow=c(1,1));plot(fcast)
+  fcast <- forecast(fit_sales, h = 1)
+
+  cat("\n",country_name," next month forecasts (est)",fcast$mean[1]
+      ,"\n(the month mean is: ",sales_avg_month)
+  if (data_weeks_avail != data_weeks_expected) {
+    cat("\nFORECAST above is UNRELIABLE due to ",data_weeks_expected-data_weeks_avail,"weeks data missing")
+  }
   
+  
+    print(fcast$mean[1])
+  par(mfrow=c(1,1));plot(fcast)
 }
+
 
 print_results <- function() {
   
@@ -370,10 +356,10 @@ art_sales_df_all <- load_preprocess_alldata()
 
 analyze(mcountry,art_sales_df_all)
 analyze(germany,art_sales_df_all[art_sales_df_all$country == germany , ])
-# analyze(france, art_sales_df_all[art_sales_df_all$country == france  , ])
+analyze(france, art_sales_df_all[art_sales_df_all$country == france  , ])
 analyze(austria,art_sales_df_all[art_sales_df_all$country == austria , ])
 
-print_results()
+#print_results()
 
 
 
