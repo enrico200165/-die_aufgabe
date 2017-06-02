@@ -44,13 +44,11 @@ results_row <- list(
   ,top_prd_art_names = character(), top_prd_art_sales = numeric()
   ,sales_avg_m = -1
   ,sales_avg_w = -1
-  ,mediap_eff = FALSE
-  ,mediap_lift = -1
-  ,storep_eff = FALSE
-  ,storep_lift = -1
-  ,bothp_eff=FALSE
-  ,bothp_lift = 0
-  ,discount_sales_coeff = 0
+
+  ,mediap_eff = FALSE,mediap_lift = -1,media_p = -1
+  ,storep_eff = FALSE,storep_lift = -1,store_p = -1
+  ,discount_eff = FALSE,discount_lift = -1, discount_p = -1
+  
   )
 results <- list(
   Germany = results_row
@@ -143,7 +141,7 @@ load_preprocess_alldata <- function() {
   #remove(sales_df); remove(articles_df)
   
   # -------------- add variables --------------------------------------
-  art_sales_df$discount <- (1 - art_sales_df$ratio)
+  art_sales_df$discount <- (1 - art_sales_df$ratio)*100 # in percentage
 
   art_sales_df$promo_status <- ifelse(art_sales_df$promo_media == 1
                                       ,ifelse(art_sales_df$promo_store == 1,"both","media")
@@ -186,12 +184,10 @@ analyze <- function(country_name,art_sales_df) {
 
   art_sales_dt <- data.table(art_sales_df)
   if (country_name != mcountry) {
-    art_sales_dt <- art_sales_dt[ country == country_name, ,]
-    print(paste("rows for",country_name,nrow(art_sales_dt)))
+    art_sales_dt <- art_sales_dt[ country == country_name, ,] # redundant, but ...
+    # print(paste())
   } 
-  
-  
-  cat("\nanalyzing data for: ",country_name)
+  cat("\n",paste("analyzing data for: ",country_name,"nr rows:",nrow(art_sales_dt)))
   
   if (country_name != mcountry &
     nrow(art_sales_df[art_sales_df$country !=  country_name, ]) > 0) {
@@ -226,89 +222,85 @@ analyze <- function(country_name,art_sales_df) {
   # head(sales_article)
   
   # -------------------------------------------------------------------
-  #                 EFFECT OF DISCOUNTS
+  #                 EFFECT OF PROMOS AND DISCOUNTS
   # -------------------------------------------------------------------
-  
-  # exclude sales data with promotions
-  art_sales_nopromo_df <- art_sales_df[art_sales_df$promo_status == "none"  ,  ]
-  discount_fit <- lm(sales ~ I(discount*100), data = art_sales_nopromo_df)
-  
-  delete_fit <- lm(sales ~ I(discount*100) * I(promo_status != "none"), data = art_sales_df)
-  # par(mfrow = c(2,2)) ;plot(discount_fit) # visual check if assumptions old
-  
-  cat("\neffect of price: analyze ONLY data WITHOUT promotions")
-  cat("effect of discount on sales supported by data: "
-      ,summary(discount_fit)$coefficient[2,4] < alpha
-      ,  "\n1% increases in discount modifies average sales of: "
-      ,summary(discount_fit)$coefficient[2,1],"items")
-  
-  # for usage further down
-  discount_factor <- summary(discount_fit)$coefficient[2,1]
-  
-  
-  # -------------------------------------------------------------------
-  #                 EFFECT OF PROMOTIONS
-  # -------------------------------------------------------------------
-  
-  cat("\npromotion effectiveness analysis, simplest possible approach")
 
-  # add var for sales adjusted to take discount into account
-  art_sales_df$sales_disc_adjust <- art_sales_df$sales-(art_sales_df$discount*discount_factor)
-  # paranoid check
-  # rbind(head(art_sales_df$sales_disc_adjust),head(art_sales_df$sales),head(art_sales_df$discount))
-  
-  promo_fit <- lm(sales_disc_adjust ~ promo_status, data = art_sales_df)
-  # par(mfrow = c(2,2)) ;plot(promo_fit)
-  
-  print(paste("mean sales without promotions",coef(promo_fit)[1]))
-  
-  print(paste("media promos effectiveness supported by data: "
-              ,(summary(promo_fit)$coefficients[3,4] < alpha )
-              ,"p value: ", summary(promo_fit)$coefficients[3,4],
-              "average sales increase: ", round(summary(promo_fit)$coefficients[3,1],2)))
-  
-  print(paste("store+media promos effectiveness supported by data: "
-              ,(summary(promo_fit)$coefficients[2,4] < alpha )
-              ,"p value: ", summary(promo_fit)$coefficients[2,4],
-              "average sales increase: ", round(summary(promo_fit)$coefficients[2,1],2)))
-  
-  print(paste("store promos effectiveness supported by data: "
-              ,(summary(promo_fit)$coefficients[4,4] < alpha )
-              ,"p value: ", summary(promo_fit)$coefficients[4,4]))
-  
-  #  ----- remove also promo effects from sales -------------------------------------------
-  lift_promo_store <- 1 # data do not support lift p > alpha
-  lift_promo_media <- (coef(promo_fit)[1]+summary(promo_fit)$coefficients[3,1])/coef(promo_fit)[1]
-  lift_promo_both <- (coef(promo_fit)[1]+summary(promo_fit)$coefficients[2,1])/coef(promo_fit)[1]
-  
-  # from sales (with discount effect already removed), remove promo effect
-  adjust_by_promo <- function(sales, promo) { 
-    if (promo == "none") return(sales);
-    if (promo == "media") return(sales/lift_promo_media);
-    if (promo == "both")  return(sales/lift_promo_both);
-    if (promo == "store")  return(sales/lift_promo_store);
-    stop(paste("should never get here, promo =",promo))
+  set_discpromos <- function(country, fieldnameroot, coeff_row) {
+    field_effect <- paste(fieldnameroot,"_eff",sep="");
+    field_lift <- paste(fieldnameroot,"_lift",sep="");
+    field_p <- paste(fieldnameroot,"_p",sep="");
+    results[[country]][[field_effect]]   <<-(coeff_row[4] < alpha)
+    results[[country]][[field_lift]]     <<- coeff_row[1]
+    results[[country]][[field_p]]        <<- coeff_row[4]
   }
+    
+  fit_promo_disc <- lm(sales ~ discount * promo_media * promo_store, data = art_sales_df)
   
-  # remove effect of promos on sales (effect of discount removed previously)
-  art_sales_df$sales_adjust_fully <- mapply(adjust_by_promo,art_sales_df$sales_disc_adjust,art_sales_df$promo_status)
+  set_discpromos(country_name,"discount",summary(fit_promo_disc)$coeff[2, ])
+  set_discpromos(country_name,"media",summary(fit_promo_disc)$coeff[3, ])
+  set_discpromos(country_name,"store",summary(fit_promo_disc)$coeff[4, ])
   
+
+  # print("")
+  # print(paste("DISCOUNT     effectiveness supported by data: "
+  #             ,(summary(fit_promo_disc)$coefficients[2,4] < alpha )
+  #             ,"p value:", summary(fit_promo_disc)$coefficients[2,4]
+  #     , "1% discount > delta sales:"
+  #     ,summary(fit_promo_disc)$coefficient[2,1],"items"))
+  # 
+  # print(paste("MEDIA promos effectiveness supported by data: "
+  #             ,(summary(fit_promo_disc)$coefficients[3,4] < alpha )
+  #             ,"p value: ", summary(fit_promo_disc)$coefficients[3,4],
+  #             "average sales increase: ", round(summary(fit_promo_disc)$coefficients[3,1],2)))
+  # 
+  # print(paste("store promos effectiveness supported by data: "
+  #             ,(summary(fit_promo_disc)$coefficients[4,4] < alpha )
+  #             ,"p value: ", summary(fit_promo_disc)$coefficients[4,4],
+  #             "average sales increase: ", round(summary(fit_promo_disc)$coefficients[4,1],2)))
+  # 
+  # print(paste("store promos effectiveness supported by data: "
+  #             ,(summary(fit_promo_disc)$coefficients[4,4] < alpha )
+  #             ,"p value: ", summary(fit_promo_disc)$coefficients[4,4]))
+
+    
+
   # --------------------------------------------------------------------
   #                     PREDICT
   # --------------------------------------------------------------------
   
   # --------------------- STLF, by week --------------------------------
   
+
+  # --- check if dates are missing
+  data_weeks_avail = length(unique(art_sales_df$retailweek))
+  days_diff = round(difftime(max(art_sales_df$retailweek),min(art_sales_df$retailweek), units = "days"))
+  data_weeks_expected <- round(days_diff/7) + 1
+  if (data_weeks_avail != data_weeks_expected) {
+    warning(cat("expected data weeks:",data_weeks_expected,"found",data_weeks_avail))
+    # return(0)
+  } else {
+    week_grp <- group_by(art_sales_df,retailweek)
+    check_weeks <- summarise(week_grp, data_per_week_cnt = n())
+    if (length(unique(check_weeks$data_per_week_cnt)) > 1) {
+      warning(paste("some weeks have less data, data counts: "
+                    ,unique(check_weeks$data_per_week_cnt)))
+    }
+  }
+  
+  
+  
   week_grp <- group_by(art_sales_df, retailweek)
-  week_sales <- summarise(week_grp, sales = sum(sales_adjust_fully))
+  week_sales <- summarise(week_grp, sales = sum(sales))
   sales_avg_week <- mean(week_sales$sales)
   
+  print(paste("predicing for",country_name))
   ts_sales_w <- ts(week_sales$sales, start=c(2014,52),frequency = 52) 
   stlf_w <- stlf(ts_sales_w, h=5);
-  cat("\nweekly forecasts (stlf)")
+  cat("\n",country_name,"weekly forecasts (stlf)")
   print(stlf_w$mean[c(1:5)])
   # plot(stlf_w);Sys.sleep(10)
   
+  return(0)
   
   # --------------------- ETS -----------------------------------------
   # the quick and reasonably good tool I will use for lack of time is ets(),
@@ -371,14 +363,14 @@ print_results <- function() {
 }
 
 
-# work_dir = dirname(parent.frame(2)$ofile)
-# setwd(getSrcDirectory()[1])
+#work_dir = dirname(parent.frame(2)$ofile)
+#setwd(getSrcDirectory()[1])
 
 art_sales_df_all <- load_preprocess_alldata()
 
 analyze(mcountry,art_sales_df_all)
 analyze(germany,art_sales_df_all[art_sales_df_all$country == germany , ])
-analyze(france, art_sales_df_all[art_sales_df_all$country == france  , ])
+# analyze(france, art_sales_df_all[art_sales_df_all$country == france  , ])
 analyze(austria,art_sales_df_all[art_sales_df_all$country == austria , ])
 
 print_results()
