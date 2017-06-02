@@ -223,8 +223,6 @@ analyze <- function(country_name,art_sales_df) {
   sales_article <- head(sales_article[order(-rank(sales))],nr_top_items)
   set_top_items(country_name,"top_prd_art",sales_article)
   
-  return(0)
-  
   # head(sales_article)
   
   # -------------------------------------------------------------------
@@ -232,18 +230,20 @@ analyze <- function(country_name,art_sales_df) {
   # -------------------------------------------------------------------
   
   # exclude sales data with promotions
-  art_sales_nopromo_df <- art_sales_df[ art_sales_df$promo_status == "none"  ,  ]
+  art_sales_nopromo_df <- art_sales_df[art_sales_df$promo_status == "none"  ,  ]
   discount_fit <- lm(sales ~ I(discount*100), data = art_sales_nopromo_df)
+  
+  delete_fit <- lm(sales ~ I(discount*100) * I(promo_status != "none"), data = art_sales_df)
   # par(mfrow = c(2,2)) ;plot(discount_fit) # visual check if assumptions old
   
   cat("\neffect of price: analyze ONLY data WITHOUT promotions")
   cat("effect of discount on sales supported by data: "
       ,summary(discount_fit)$coefficient[2,4] < alpha
       ,  "\n1% increases in discount modifies average sales of: "
-      ,coef(discount_fit)[2],"items")
+      ,summary(discount_fit)$coefficient[2,1],"items")
   
   # for usage further down
-  discount_factor <- coef(discount_fit)[2]
+  discount_factor <- summary(discount_fit)$coefficient[2,1]
   
   
   # -------------------------------------------------------------------
@@ -252,7 +252,7 @@ analyze <- function(country_name,art_sales_df) {
   
   cat("\npromotion effectiveness analysis, simplest possible approach")
 
-  # add var for sales with effect of discount removed
+  # add var for sales adjusted to take discount into account
   art_sales_df$sales_disc_adjust <- art_sales_df$sales-(art_sales_df$discount*discount_factor)
   # paranoid check
   # rbind(head(art_sales_df$sales_disc_adjust),head(art_sales_df$sales),head(art_sales_df$discount))
