@@ -30,15 +30,18 @@ cap <- FALSE
 articles_fname <- "article_master.txt"
 sales_fname <- "sales.txt"
 field_sep <- ";"
-
+nr_top_items <- 5 # nr of best performing items reported
 
 art_sales_dt <- NULL
 
 france <- "France";germany <-"Germany";austria <-"Austria"; mcountry="mcountry"
 
-# --- create and init results container
+# --- create and init results container, awkward but saves subsetting ---
 results_row <- list(
-  sales_tot = -1
+   sales_tot = -1
+  ,top_prd_grp_names = character(), top_prd_grp_sales = numeric()
+  ,top_prd_grpcat_names = character(), top_prd_grpcat_sales = numeric()
+  ,top_prd_art_names = character(), top_prd_art_sales = numeric()
   ,sales_avg_m = -1
   ,sales_avg_w = -1
   ,mediap_eff = FALSE
@@ -152,9 +155,7 @@ load_preprocess_alldata <- function() {
 
   # calculate some global values
   art_sales_dt <<-  data.table(art_sales_df)
-  sales_country <- art_sales_dt[ , list(
-    sales = sum(sales), sales_avg = mean(sales)) 
-    ,by=list(country)]
+  sales_country <- art_sales_dt[ , list(sales = sum(sales), sales_avg = mean(sales)) ,by=list(country)]
   
   apply(sales_country,1,function(cur_row) { 
     country <- cur_row[1]
@@ -163,11 +164,10 @@ load_preprocess_alldata <- function() {
   
   sales_tot_allcountries <-sum(art_sales_dt$sales)
   if (sales_tot_allcountries == (results[[germany]]$sales_tot + results[[france]]$sales_tot + results[[austria]]$sales_tot)) {
-    results[mcountry]$sales_tot <- sales_tot_allcountries;
+    results[[mcountry]]$sales_tot <<- sales_tot_allcountries;
   } else {
     stop("calculation problem, tot sales")
   }
-  
   
   return(art_sales_df)
 }
@@ -179,28 +179,36 @@ analyze <- function(country_name,art_sales_df) {
   
   cat("data for: ",country_name)
   
+  if (nrow(art_sales_df[art_sales_df$country !=  country_name, ]) > 0) {
+    stop(paste("internal error: found  data for country other than:",country_name))
+  }
+  
   # -------------------------------------------------------------------
   #                 WHAT DRIVES SALES
   # taken as: which country, product group, category, article sell the most
   # -------------------------------------------------------------------
   
+  set_top_items <- function(country, fieldnameroot, values) {
+    namefield <- paste(fieldnameroot,"_names",sep="");
+    salesfield <- paste(fieldnameroot,"_sales",sep="");
+    results[[country]][[namefield]]   <<- as.character(values[ ,1])
+    results[[country]][[salesfield]] <<- values[ ,2]
+  }
+  
   # --- simply check averages
-  
-  
-  sales_country <- art_sales_dt[ , list(sales = sum(sales)), by=list(country)]
-  sales_country <- sales_country[order(-rank(sales))]
-  
   sales_prodgroup <- art_sales_dt[ , list(sales = sum(sales)), by=list(productgroup)]
-  sales_prodgroup <- sales_prodgroup[order(-rank(sales))]
+  sales_prodgroup <- head(sales_prodgroup[order(-rank(sales))],nr_top_items)
+  set_top_items(country_name,"top_prd_grp",sales_prodgroup)
   
   sales_prodgrpcat <- art_sales_dt[ , list(sales = sum(sales)), by=list(productgroup,category)]
-  sales_prodgrpcat <- sales_prodgrpcat[order(-rank(sales))]
-  
-  sales_prodcat <- art_sales_dt[ , list(sales = sum(sales)), by=list(category)]
-  sales_prodcat <- sales_prodcat[order(-rank(sales))]
+  sales_prodgrpcat <- head(sales_prodgrpcat[order(-rank(sales))],nr_top_items)
+  set_top_items(country_name,"top_prd_grpcat",sales_prodgrpcat)
   
   sales_article <- art_sales_dt[ , list(sales = sum(sales)), by=list(article)]
-  sales_article <- sales_article[order(-rank(sales))]
+  sales_article <- head(sales_article[order(-rank(sales))],nr_top_items)
+  set_top_items(country_name,"top_prd_art",sales_article)
+  
+  return(0)
   
   # head(sales_article)
   
@@ -336,12 +344,11 @@ analyze <- function(country_name,art_sales_df) {
 
 art_sales_df_all <- load_preprocess_alldata()
 
-analyze("ALL",art_sales_df_all)
+# analyze(mcountry,art_sales_df_all)
 # analyze("Germany",art_sales_df_all[art_sales_df_all$country == "Germany" , ])
 # analyze("France", art_sales_df_all[art_sales_df_all$country == "France" , ])
 
-art_sales_df_austria <- art_sales_df_all[art_sales_df_all$country == "Austria" , ]
-analyze("Austria",art_sales_df_all[art_sales_df_all$country == "Austria" , ])
+analyze(austria,art_sales_df_all[art_sales_df_all$country == austria , ])
 
 
 
