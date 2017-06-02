@@ -4,7 +4,8 @@ library(data.table)
 
 library(ggplot2)
 library(forecast)
-library(caret)
+library(car)
+library(MASS)
 
 # dates
 library(lubridate)
@@ -39,7 +40,7 @@ france <- "France";germany <-"Germany";austria <-"Austria"; mcountry="mcountry"
 results_row <- list(
    country = character()
   ,sales_tot = -1
-  ,top_prd_grp_names = character(), top_prd_grp_sales = numeric()
+  ,top_prd_grp_names = character(), top_prd_grp_sales = numeric(), top_prd_grp_pct = numeric()
   ,top_prd_grpcat_names = character(), top_prd_grpcat_sales = numeric()
   ,top_prd_art_names = character(), top_prd_art_sales = numeric()
   ,sales_avg_m = -1
@@ -205,11 +206,15 @@ analyze <- function(country_name,art_sales_df) {
   set_top_items <- function(country, fieldnameroot, values) {
     namefield <- paste(fieldnameroot,"_names",sep="");
     salesfield <- paste(fieldnameroot,"_sales",sep="");
+    pctfield <- paste(fieldnameroot,"_pct",sep="");
     results[[country]][[namefield]]   <<- as.character(values[ ,1][[1]])
     results[[country]][[salesfield]] <<- as.vector(values[ ,2])
+    results[[country]][[pctfield]] <<- as.vector(values[ ,2])/sales_country_tot*100
   }
-  
-  # --- simply check averages
+
+  sales_country_tot <- sum(art_sales_dt$sales)
+  cat(country_name,"tot sales",sales_country_tot)
+  # --- summarize
   sales_prodgroup <- art_sales_dt[ ,list(sales = sum(sales)), by=list(productgroup)]
   sales_prodgroup <- head(sales_prodgroup[order(-rank(sales))],nr_top_items)
   set_top_items(country_name,"top_prd_grp",sales_prodgroup)
@@ -238,6 +243,17 @@ analyze <- function(country_name,art_sales_df) {
   }
     
   fit_promo_disc <- lm(sales ~ discount * promo_media * promo_store, data = art_sales_df)
+  # fit_promo_disc <- lm(sales ~ discount + promo_media + promo_store, data = art_sales_df)
+  # print(vif(fit_promo_disc))
+  # https://stats.stackexchange.com/questions/141060/multicollinearity-using-vif-and-condition-indeces
+  
+  # Check residuals
+  # qqPlot(fit_promo_disc, main="t")
+  # distribution of studentized residuals
+  # sresid <- studres(fit_promo_disc) 
+  # hist(sresid, freq=FALSE,main="Student Residuals")
+  # xfit<-seq(min(sresid),max(sresid),length=40); yfit<-dnorm(xfit) 
+  # lines(xfit, yfit)
   
   set_discpromos(country_name,"discount",summary(fit_promo_disc)$coeff[2, ])
   set_discpromos(country_name,"media",summary(fit_promo_disc)$coeff[3, ])
@@ -343,7 +359,11 @@ print_results <- function() {
 
     tmp <- paste(cntry[["top_prd_grp_sales"]])
     cntry_str <- paste(cntry_str,tmp)
+
+    tmp <- paste(cntry[["top_prd_grp_pct"]])
+    cntry_str <- paste(cntry_str,tmp)
     
+        
     print(cntry_str)
   }
 }
@@ -359,7 +379,7 @@ analyze(germany,art_sales_df_all[art_sales_df_all$country == germany , ])
 analyze(france, art_sales_df_all[art_sales_df_all$country == france  , ])
 analyze(austria,art_sales_df_all[art_sales_df_all$country == austria , ])
 
-#print_results()
+print_results()
 
 
 
