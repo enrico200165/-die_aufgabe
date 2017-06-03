@@ -209,7 +209,7 @@ analyze <- function(country_name,art_sales_df) {
     pctfield <- paste(fieldnameroot,"_pct",sep="");
     results[[country]][[namefield]]   <<- as.character(values[ ,1][[1]])
     results[[country]][[salesfield]] <<- as.vector(values[ ,2])
-    results[[country]][[pctfield]] <<- as.vector(values[ ,2])/sales_country_tot*100
+    results[[country]][[pctfield]] <<- round(as.vector(values[ ,2])/sales_country_tot*100,2)
   }
 
   sales_country_tot <- sum(art_sales_dt$sales)
@@ -342,10 +342,38 @@ analyze <- function(country_name,art_sales_df) {
     cat("\nFORECAST above is UNRELIABLE due to ",data_weeks_expected-data_weeks_avail,"weeks data missing")
   }
   
-  
-    print(fcast$mean[1])
+  print(fcast$mean[1])
   par(mfrow=c(1,1));plot(fcast)
+  
+
+  #--------------------------------------------------------------------
+  #               PRICE OPTIMIZATION
+  #--------------------------------------------------------------------
+
+  # consider sales without promotions
+  art_sales_nopromo_dt <- art_sales_dt[promo_status == "none" , ]
+  cat("\n",nrow(art_sales_nopromo_dt),"out of",nrow(art_sales_dt),"ie"
+      ,nrow(art_sales_nopromo_dt)/nrow(art_sales_dt)*100,"%\n")
+  
+  # find articles most sold
+  art_sales_nopromo_sum_dt <- art_sales_dt[ ,list(sales = sum(sales)), by=list(article)]
+  print(art_sales_nopromo_sum_dt[1:5]$sales)
+  art_sales_order_dt <- art_sales_nopromo_sum_dt[order(-rank(sales)),,]
+  articles_most_sold <-art_sales_nopromo_sum_dt[1:5,,]$article
+  remove(art_sales_order_dt); remove(art_sales_nopromo_sum_dt)
+  cat("\n\n",articles_most_sold)
+  
+  for (art in articles_most_sold) {
+    print(art)
+    art_dt <- art_sales_nopromo_dt[article == art]
+    print(paste("distinct articles",unique(art_dt$article),"nr data rows",nrow(art_dt)))
+    # fit_art <- lm( sadata = art_sales_nopromo_dt)
+  }
+  
+  
+  cat("")
 }
+
 
 
 print_results <- function() {
