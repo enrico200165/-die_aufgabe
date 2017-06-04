@@ -1,5 +1,6 @@
 
 
+
 library(data.table)
 
 library(ggplot2)
@@ -31,10 +32,16 @@ cap <- FALSE
 articles_fname <- "article_master.txt"
 sales_fname <- "sales.txt"
 field_sep <- ";"
+
+
 nr_top_items <- 5 # nr of best performing items reported
 
+# reduce risk of typos
+france <- "France";
+germany <-"Germany";
+austria <-"Austria"; 
+mcountry="mcountry"; # analyze all data, all the countries
 
-france <- "France";germany <-"Germany";austria <-"Austria"; mcountry="mcountry"
 
 # --- create and init results container, awkward but saves subsetting ---
 results_row <- list(
@@ -65,17 +72,26 @@ results[[mcountry]][["country"]] <- mcountry
 
 
 
-
-# -------------------------------------------------------------------
-#     DATA LOAD AND PREPROCESSING
-# -------------------------------------------------------------------
+# ------------------------------------------------------------------
+#' Data Load and Preprocessing
+#' @return data frame with sales data joined to articles master data
+#' @author Enrico
+#' @export
+#' @details
+#' Reads the data files, joins the sales and articles data, 
+#' performs some simple preprocessing
+# ------------------------------------------------------------------
 load_preprocess_alldata <- function() {
 
+  # read articles data
   articles_df <- read.csv(articles_fname, sep = field_sep)
-  
   articles_df$article <- as.character(articles_df$article) # should not be factors
   
-  if (!exists(deparse(substitute(sales_df))) || is.null(sales_df) || !is.data.frame(sales_df) || nrow(sales_df) <= 0) {
+  # read sales data. The if/"lazy read" worked when this code was not in a function,
+  # it does NOT perform lazy load now inside a function (quickly) 
+  # for the time being keep it just in case
+  if (!exists(deparse(substitute(sales_df))) || is.null(sales_df) 
+      || !is.data.frame(sales_df) || nrow(sales_df) <= 0) {
     print(paste("reading:",sales_fname))
     sales_df <- read.csv(sales_fname, sep = field_sep)
     # article IDs should not be factors
@@ -84,15 +100,18 @@ load_preprocess_alldata <- function() {
     print(paste("data already loaded, NOT reading:",sales_fname))
   }
   
+  
   # -------------- quick peek at the data -----------------------------
+  # code below no longer used, keep it just in case
   # str(sales_df); summary(sales_df)
   # str(articles_df); summary(articles_df)
   
-  # check if other countries present besides those requested
-  cat("countries present in data:",as.character(unique(sales_df$country)),"\n")
-  # check missing data
-  cat("sales: non complete cases present: ", any(!complete.cases(sales_df)),"\n")
-  cat("articles: non complete cases present: ", any(!complete.cases(articles_df)),"\n")
+  # check if other countries present besides the 3 requested
+  # cat("countries present in data:",as.character(unique(sales_df$country)),"\n")
+  # check NAs
+  # cat("sales: non complete cases present: ", any(!complete.cases(sales_df)),"\n")
+  # cat("articles: non complete cases present: ", any(!complete.cases(articles_df)),"\n")
+  
   
   # -------------------- PREPROCESSING --------------------------------
   
@@ -104,15 +123,22 @@ load_preprocess_alldata <- function() {
     if(any(outl)) sales_df[outl, ]$sales <- (qnt[2] + H-1)
   }
   
-  # for now inner join, no check for eventual bad sales with article not in master 
+  # quick check duplicates for in master
+  if (length(articles_df$article) != length(unique(articles_df$article))) {
+    warning(paste("duplicate articles in",articles_fname))
+  }
+  
+  # check for eventual  sales without articles in master 
+
+  # join sales with article data to work more easily
   distinct_art_sold <- unique(sales_df$article)
-  art_sales_df <- inner_join(sales_df,articles_df,by = "article")
-  if (length(distinct_art_sold) != length(unique(art_sales_df$article))) {
+  if (length(distinct_art_sold) != length(unique(sales_df$article))) {
     msg <- paste("some sales do not correspond to articles in master, nr such sales"
                  ,length(distinct_art_sold) - length(unique(art_sales_df$article))) 
     orphan_sales_articles <- setdiff(distinct_art_sold, unique(art_sales_df$article));
-    cat("articles ID in sales data not found in master: ",orphan_sales_articles)
+    warming("articles ID in sales data not found in master: ",orphan_sales_articles)
   }
+  art_sales_df <- inner_join(sales_df,articles_df,by = "article")
   
   # -- ensure dates have date type ---
   art_sales_df$retailweek <- as.POSIXct(strptime(as.character(art_sales_df$retailweek), "%Y-%m-%d"))
@@ -361,42 +387,40 @@ analyze <- function(country_name,art_sales_df) {
   art_sales_order_dt <- art_sales_nopromo_sum_dt[order(-rank(sales)),,]
 
   for (art in art_sales_nopromo_sum_dt[1:5,,]$article) {
-    print(art)
 
     # subset all data for each top article into dedicated data table art_dt
     art_dt <- art_sales_nopromo_dt[article == art]
     # calculate total profit for the article from the data
     nrows_art <- nrow(art_dt) 
-    print(paste("distinct articles",unique(art_dt$article),"nr data rows",nrow(art_dt)))
-    
-    qplot(sales, current_price, data = art_dt)
-    
+
     # --- build profit equation to optimize
     # get sales linear eq coefficients
     b <- lm(sales ~ current_price, data = art_dt)$coefficients
     # duplicate other parameters from equation into more user friendly variables
-    art_reg_price <- art_dt[1]$regular_price; 
+    art_reg_price <- art_dt[1]$regular_price;
+    art_current_price_avg <- mean(art_dt$current_price) # just for info
     sales_cost <- art_dt[1]$cost
     # finally assemble the profit equation
     art_profit <- function(price) {
       b[2]*price^2+price*(b[1]-b[2]*sales_cost) - sales_cost*b[1]
     }
-    # optimize profit over price, within real world boundaries (cannot more than half or raise more than 50% a price)
-    opt <- optimize(art_profit,lower = art_reg_price*0.5, upper = art_reg_price*1.5,maximum = TRUE)
+    # optimize profit over price
+    opt <- optimize(art_profit,lower = art_reg_price*0, upper = art_reg_price*2,maximum = TRUE)
 
     profit_from_data <- sum(art_dt$sales*art_dt$current_price -art_dt$cost)
     # profit with optimized values
     sales_opt <- b[1]+b[2]*opt$maximum
     profit_opt <- sales_opt*(opt$maximum - sales_cost)
     # calculating profit from past data we summed nrows_art data points
-    profit_opt <- nrows_art * nrows_art
+    profit_opt <- profit_opt * nrows_art
     
-    print(paste("profits, current: ",profit_from_data,"theoretical profit from project optim to past data",profit_opt,
-          "ratio:", round(profit_opt/profit_from_data*100,2),"%"))
+    print(paste("art:",art,"current price avg",art_current_price_avg,"optim price",opt$maximum
+                ,"intercept",b[1],"slope",b[2],
+      "profits[current",profit_from_data,"(theoretical) optim on past data"
+                ,profit_opt,"] theoric profit improvement:", round((profit_opt/profit_from_data-1)*100,2),"%"))
   }
   
-  
-  cat("")
+  cat("") # just for breakpoint
 }
 
 
