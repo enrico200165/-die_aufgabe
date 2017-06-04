@@ -38,6 +38,8 @@ library(ggplot2)
 # library(knitr)
 
 
+options(warn=1)
+
 # -------------------------------------------------------------------
 #     DEFS & GLOBALS
 # -------------------------------------------------------------------
@@ -60,7 +62,7 @@ austria <-"Austria";
 mcountry="mcountry"; # pseudo-country, analyze all data/countries together
 
 
-# --- (TENTATIVE) create and init results container, awkward for now ---
+# --- (TENTATIVE) create and init container for analys of results, awkward for now ---
 results_row <- list(
    country = character()
   ,sales_tot = -1
@@ -259,7 +261,7 @@ analyze <- function(country_name, art_sales_df) {
     pctfield <- paste(fieldnameroot,"_pct",sep="");
     results[[country]][[namefield]]   <<- as.character(values[ ,1][[1]])
     results[[country]][[salesfield]] <<- as.vector(values[ ,2])
-    results[[country]][[pctfield]] <<- round(as.vector(values[ ,2])/sales_country_tot*100,2)
+    results[[country]][[pctfield]] <<- round(as.vector(values[,2])/sales_country_tot*100,2)
   }
 
   sales_country_tot <- sum(art_sales_dt$sales)
@@ -271,7 +273,7 @@ analyze <- function(country_name, art_sales_df) {
   
   sales_prodgrpcat <- art_sales_dt[ ,list(sales = sum(sales)), by=list(productgroup,category)]
   sales_prodgrpcat <- head(sales_prodgrpcat[order(-rank(sales))],nr_top_items)
-  set_top_items(country_name,"top_prd_grpcat",sales_prodgrpcat)
+  set_top_items(country_name,"top_prd_grpcat",sales_prodgrpcat[,c(2,3)])
   
   sales_article <- art_sales_dt[, list(sales = sum(sales)), by=list(article)]
   sales_article <- head(sales_article[order(-rank(sales))],nr_top_items)
@@ -410,43 +412,60 @@ analyze <- function(country_name, art_sales_df) {
       ,nrow(art_sales_nopromo_dt)/nrow(art_sales_dt)*100,"%\n")
   
   # find articles most sold
-  art_sales_nopromo_sum_dt <- art_sales_dt[ ,list(sales = sum(sales)), by=list(article)]
-  print(art_sales_nopromo_sum_dt[1:5]$sales)
+  art_sales_nopromo_sum_dt <- art_sales_nopromo_dt[ ,list(sales = sum(sales)), by=list(article)]
   art_sales_order_dt <- art_sales_nopromo_sum_dt[order(-rank(sales)),,]
+  # print(head(art_sales_order_dt$sales,10))
 
-  for (art in art_sales_nopromo_sum_dt[1:5,,]$article) {
+  nr_prices_optim <- 0
+  for (art in art_sales_order_dt$article) {
 
     # subset all data for each top article into dedicated data table art_dt
     art_dt <- art_sales_nopromo_dt[article == art]
-    # calculate total profit for the article from the data
     nrows_art <- nrow(art_dt) 
 
     # --- build profit equation to optimize
     # get sales linear eq coefficients
-    b <- lm(sales ~ current_price, data = art_dt)$coefficients
-    # duplicate other parameters from equation into more user friendly variables
-    art_reg_price <- art_dt[1]$regular_price;
-    art_current_price_avg <- mean(art_dt$current_price) # just for info
-    sales_cost <- art_dt[1]$cost
-    # finally assemble the profit equation
-    art_profit <- function(price) {
-      b[2]*price^2+price*(b[1]-b[2]*sales_cost) - sales_cost*b[1]
+    fit <- lm(sales ~ current_price, data = art_dt)
+    b <- fit$coefficients; 
+    if (summary(fit)$coefficients[1,4] >= alpha | (summary(fit)$coefficients[2,4] >= alpha)) {
+      warning(paste(art,"non meaningful coefficients",summary(fit)$coefficients[1,4] ,summary(fit)$coefficients[2,4] ))
+    } else {
+      # duplicate other parameters from equation into more user friendly variables
+      art_reg_price <- art_dt[1]$regular_price;
+      art_current_price_avg <- mean(art_dt$current_price) # just for info
+      sales_cost <- art_dt[1]$cost
+      # finally assemble the profit equation
+      art_profit <- function(price) {
+        profit <- b[2]*price^2+price*(b[1]-b[2]*sales_cost) - sales_cost*b[1]
+        profit
+      }
+      xyz <- art_profit(0); # debug
+      # optimize profit over price
+      opt <- optimize(art_profit,lower = art_reg_price*0.5, upper = art_reg_price*10,maximum = TRUE)
+      
+      # check for debug
+      art_profit2 <- function(price) {
+        profit <- b[2]*price^2+price*(b[1]-b[2]*sales_cost) - sales_cost*b[1]
+        profit*-1
+      }
+      op2 <- optim(art_reg_price*0.0,fn = art_profit2, method="CG")
+      
+      profit_from_data <- sum(art_dt$sales*art_dt$current_price -art_dt$cost)
+      # profit with optimized values
+      sales_opt <- b[1]+b[2]*opt$maximum
+      profit_opt <- sales_opt*(opt$maximum - sales_cost)
+      # calculating profit from past data we summed nrows_art data points
+      profit_opt <- profit_opt * nrows_art
+      
+      print(paste("art:",art,"current price avg",art_current_price_avg,"optim price",opt$maximum
+                  ,"intercept",b[1],"slope",b[2],
+                  "profits[current",profit_from_data,"(theoretical) optim on past data"
+                  ,profit_opt,"] theoric profit improvement:", round((profit_opt/profit_from_data)*100-100,2),"%"))
+      art_dt <- NULL
+      nr_prices_optim <- nr_prices_optim + 1
+      if (nr_prices_optim >= 5)
+        break;
     }
-    # optimize profit over price
-    opt <- optimize(art_profit,lower = art_reg_price*0, upper = art_reg_price*2,maximum = TRUE)
-
-    profit_from_data <- sum(art_dt$sales*art_dt$current_price -art_dt$cost)
-    # profit with optimized values
-    sales_opt <- b[1]+b[2]*opt$maximum
-    profit_opt <- sales_opt*(opt$maximum - sales_cost)
-    # calculating profit from past data we summed nrows_art data points
-    profit_opt <- profit_opt * nrows_art
-    
-    options(digits = 2)
-    print(paste("art:",art,"current price avg",art_current_price_avg,"optim price",opt$maximum
-                ,"intercept",b[1],"slope",b[2],
-      "profits[current",profit_from_data,"(theoretical) optim on past data"
-                ,profit_opt,"] theoric profit improvement:", round((profit_opt/profit_from_data-1)*100,2),"%"))
   }
 }
 
