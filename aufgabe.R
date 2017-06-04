@@ -1,25 +1,41 @@
+#'
+#' ANALYSIS OF SALES DATA ASSIGNMENT
+#' 
+#' @author Enrico V
+#' @details
+#' 
+#' Code is developed as an assignment, not as a real world production code
+#' (also for lack of time) nonetheless where possible some realism has been
+#' pursued. Assignment reads "market managers of Germany, Austria and France 
+#' would  like..." so the code has been structured to be able to perform analysis
+#' by simple country and of all the countries together by isolating the analysis
+#' in a functions that takes the data set as a parameter.
+#' 
+#' If this were "real world" code to be run periodically to produce reports
+#' the best approach would be to produce and .rmd document with code embedded
+#' ( http://rmarkdown.rstudio.com/ ) and use slidify 
+#' (http://slidify.org/samples/intro/#1  ) if slides are needed
+#' The approach above requires putting the results of the analysis in proper
+#' data structures (data frames Etc.) from which produce plots$graphics an whose
+#' content can be automatically inserted in .rmd or in slides with slidify.
+#'  Currently the structure of this code for lack of time does not allow that
 
-
-
+# --- structural ---
+library(dplyr)
 library(data.table)
 
-library(ggplot2)
+# -- stats etc ---
 library(forecast)
 library(car)
 library(MASS)
 
-# dates
+# -- helpers ---
 library(lubridate)
-library(xts)
-# library(rmeta)
+# library(xts)
 
-# library(TTR)
-
-
-# --- check if still used
-
-library(knitr)
-library(dplyr)
+# -- output&reprots ---
+library(ggplot2)
+# library(knitr)
 
 
 # -------------------------------------------------------------------
@@ -27,8 +43,9 @@ library(dplyr)
 # -------------------------------------------------------------------
 
 alpha <- 0.05
-cap <- FALSE
+cap <- FALSE # whether to cap outliers or not
 
+# data files
 articles_fname <- "article_master.txt"
 sales_fname <- "sales.txt"
 field_sep <- ";"
@@ -40,10 +57,10 @@ nr_top_items <- 5 # nr of best performing items reported
 france <- "France";
 germany <-"Germany";
 austria <-"Austria"; 
-mcountry="mcountry"; # analyze all data, all the countries
+mcountry="mcountry"; # pseudo-country, analyze all data/countries together
 
 
-# --- create and init results container, awkward but saves subsetting ---
+# --- (TENTATIVE) create and init results container, awkward for now ---
 results_row <- list(
    country = character()
   ,sales_tot = -1
@@ -74,9 +91,11 @@ results[[mcountry]][["country"]] <- mcountry
 
 # ------------------------------------------------------------------
 #' Data Load and Preprocessing
-#' @return data frame with sales data joined to articles master data
+#' Operates globally (all data read, all countries)
+#' 
+#' @return data frame with all sales data joined to articles master data,
+#' with some variables renamed for readability, some added to work more easily
 #' @author Enrico
-#' @export
 #' @details
 #' Reads the data files, joins the sales and articles data, 
 #' performs some simple preprocessing
@@ -123,14 +142,12 @@ load_preprocess_alldata <- function() {
     if(any(outl)) sales_df[outl, ]$sales <- (qnt[2] + H-1)
   }
   
-  # quick check duplicates for in master
+  # paranoid check for duplicates for in master
   if (length(articles_df$article) != length(unique(articles_df$article))) {
     warning(paste("duplicate articles in",articles_fname))
   }
   
   # check for eventual  sales without articles in master 
-
-  # join sales with article data to work more easily
   distinct_art_sold <- unique(sales_df$article)
   if (length(distinct_art_sold) != length(unique(sales_df$article))) {
     msg <- paste("some sales do not correspond to articles in master, nr such sales"
@@ -138,6 +155,8 @@ load_preprocess_alldata <- function() {
     orphan_sales_articles <- setdiff(distinct_art_sold, unique(art_sales_df$article));
     warming("articles ID in sales data not found in master: ",orphan_sales_articles)
   }
+  
+  # join sales with article data to work more easily
   art_sales_df <- inner_join(sales_df,articles_df,by = "article")
   
   # -- ensure dates have date type ---
@@ -145,31 +164,18 @@ load_preprocess_alldata <- function() {
   art_sales_df$retailweek <- art_sales_df$retailweek[order(art_sales_df$retailweek)]
   # head(art_sales_df$retailweek);tail(art_sales_df$retailweek) # paranoid check
   
-  # --- check if dates are missing
-  weeks <- sort(unique(art_sales_df$retailweek)) # try to rewrite with min and max
-  days_diff = round(difftime(weeks[length(weeks)], weeks[1], units = "days")) #
-  weeks_diff = as.numeric(days_diff/7)
-  if (length(weeks) != (weeks_diff+1)) {
-    print("missing weeks")
-  } else {
-    week_grp <- group_by(art_sales_df,retailweek)
-    check_weeks <- summarise(week_grp, data_per_week_cnt = n())
-    if (length(unique(check_weeks$data_per_week_cnt)) > 1) {
-      warning(paste("some weeks have less data, data counts: "
-                    ,unique(check_weeks$data_per_week_cnt)))
-    }
-  }
-  
+
   # -------------------- make var names more readable ------------------- 
   colnames(art_sales_df)[which(colnames(art_sales_df) == "promo1")] <- "promo_media"
   colnames(art_sales_df)[which(colnames(art_sales_df) == "promo2")] <- "promo_store"
   
-  # when program tested free memory here
-  #remove(sales_df); remove(articles_df)
-  
-  # -------------- add variables --------------------------------------
+
+  # ----- add variables to work more easily (resources allow it -----
+
+  # simple/readable discount as percentage
   art_sales_df$discount <- (1 - art_sales_df$ratio)*100 # in percentage
 
+  # "index" with global promo status
   art_sales_df$promo_status <- ifelse(art_sales_df$promo_media == 1
                                       ,ifelse(art_sales_df$promo_store == 1,"both","media")
                                       ,ifelse(art_sales_df$promo_store == 1,"store","none"))
@@ -177,7 +183,7 @@ load_preprocess_alldata <- function() {
   art_sales_df$promo_status <- relevel(art_sales_df$promo_status, ref="none")
   
   
-  # ------------------- EXPLORATION -----------------------------------
+  # ------------------- QUICK EXPLORATION -----------------------------------
   if (FALSE) {
     grp <- group_by(art_sales_df,retailweek)
     smrz <- summarize(grp, sales = sum(sales))
@@ -186,7 +192,7 @@ load_preprocess_alldata <- function() {
   }
 
 
-  # calculate some global values
+  # --- calculate some global values. NB might not actually need/use them ----
   art_sales_dt <-  data.table(art_sales_df)
   sales_country <- art_sales_dt[ , list(sales = sum(sales), sales_avg = mean(sales)) ,by=list(country)]
   
@@ -207,6 +213,20 @@ load_preprocess_alldata <- function() {
 
 
 
+
+# ------------------------------------------------------------------
+#' Analyzes data performing all functions requested
+#' @param country_name
+#' Country whose data are in the dataset art_sales_df passed as parameter
+#' note that also the global data_set can be passed as a pseudo-country
+#' (mcountry)
+#' @return currently no real return value for lack of time, this may change
+#' @author Enrico
+#' @details
+#' Currently dirty, operates by side-effects, if there were/will be time 
+#' the results of the analysis should go in data-frames to feed directly
+#' ggplo graphics
+# ------------------------------------------------------------------
 analyze <- function(country_name,art_sales_df) {
 
   art_sales_dt <- data.table(art_sales_df)
