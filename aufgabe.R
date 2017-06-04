@@ -225,19 +225,23 @@ load_preprocess_alldata <- function() {
 #' @details
 #' Currently dirty, operates by side-effects, if there were/will be time 
 #' the results of the analysis should go in data-frames to feed directly
-#' ggplo graphics
+#' ggplot graphics
+#' CAVEAT: in some places a normal data frame, in other a data.table, just
+#' to write more easily, no real/semantic difference, no special reason
+#' just untidiness due to hurry
+#' IF time available will tidy up and use always and only one  data structure
 # ------------------------------------------------------------------
-analyze <- function(country_name,art_sales_df) {
+analyze <- function(country_name, art_sales_df) {
 
   art_sales_dt <- data.table(art_sales_df)
   if (country_name != mcountry) {
-    art_sales_dt <- art_sales_dt[ country == country_name, ,] # redundant, but ...
-    # print(paste())
+    # for safety, currently redundant: subsetting done by calling code
+    art_sales_dt <- art_sales_dt[ country == country_name, ,] 
   } 
   
-  cat("\n-----------------------------------------------------------------------------")
-  cat("\nanalyzing data for: ",toupper(country_name),", nr rows:",nrow(art_sales_dt))
-  cat("\n-----------------------------------------------------------------------------\n")
+  cat("\n#############################################################################")
+  cat("\nanalyzing:",toupper(country_name),", nr data rows:",nrow(art_sales_dt))
+  cat("\n#############################################################################\n")
       
   if (country_name != mcountry &
     nrow(art_sales_df[art_sales_df$country !=  country_name, ]) > 0) {
@@ -279,6 +283,9 @@ analyze <- function(country_name,art_sales_df) {
   #                 EFFECT OF PROMOS AND DISCOUNTS
   # -------------------------------------------------------------------
 
+  # don't waste time looking at this, helper function to simplify filling 
+  # some fields of the awkward data structure where I started to store results
+  # night not use that structure or change it to some data-frames
   set_discpromos <- function(country, fieldnameroot, coeff_row) {
     field_effect <- paste(fieldnameroot,"_eff",sep="");
     field_lift <- paste(fieldnameroot,"_lift",sep="");
@@ -301,6 +308,7 @@ analyze <- function(country_name,art_sales_df) {
   # xfit<-seq(min(sresid),max(sresid),length=40); yfit<-dnorm(xfit) 
   # lines(xfit, yfit)
   
+  # store the results (tentative)
   set_discpromos(country_name,"discount",summary(fit_promo_disc)$coeff[2, ])
   set_discpromos(country_name,"media",summary(fit_promo_disc)$coeff[3, ])
   set_discpromos(country_name,"store",summary(fit_promo_disc)$coeff[4, ])
@@ -321,13 +329,9 @@ analyze <- function(country_name,art_sales_df) {
       ,"\np value: ", summary(fit_promo_disc)$coefficients[4,4]
   )
 
-  # --------------------------------------------------------------------
+  # -----------------------------------------------------------------
   #                     PREDICT
-  # --------------------------------------------------------------------
-  
-  # --------------------- STLF, by week --------------------------------
-
-  cat("\n --- predicting for",country_name)
+  # -----------------------------------------------------------------
   
   # --- check if dates are missing
   data_weeks_avail = length(unique(art_sales_df$retailweek))
@@ -344,24 +348,28 @@ analyze <- function(country_name,art_sales_df) {
     }
   }
 
+  # calculate total sales by week, useful also for non-weekly predictions
   week_sales <- summarise(group_by(art_sales_df, retailweek), sales = sum(sales))
-  sales_avg_week <- mean(week_sales$sales)
   
-  predict_weeks_nr <- 5
-  if (country_name != france) {
-    ts_sales_w <- ts(week_sales$sales, start=c(2014,52),frequency = 52) 
-    stlf_w <- stlf(ts_sales_w, h=predict_weeks_nr);
-    cat("\n",country_name," weekly forecasts (stlf), next",predict_weeks_nr,"weeks:",stlf_w$mean[c(1:5)]
-        ,"\n(the weekly mean is: ",sales_avg_week,")")
-    if (data_weeks_avail != data_weeks_expected) {
-      cat("\nFORECAST above is UNRELIABLE due to ",data_weeks_expected-data_weeks_avail,"missing week")
-    }
-    # plot(stlf_w);Sys.sleep(10)
-  } else {
-    warning(country_name," not 2 periods available, not performing stlf prediction")
-  }
+  # abandoned in favour of ETS
+  # sales_avg_week <- mean(week_sales$sales)
+  # 
+  # predict_weeks_nr <- 5
+  # if (country_name != france) {
+  #   ts_sales_w <- ts(week_sales$sales, start=c(2014,52),frequency = 52) 
+  #   stlf_w <- stlf(ts_sales_w, h=predict_weeks_nr);
+  #   cat("\n",country_name," weekly forecasts (stlf), next",predict_weeks_nr,"weeks:",stlf_w$mean[c(1:5)]
+  #       ,"\n(the weekly mean is: ",sales_avg_week,")")
+  #   if (data_weeks_avail != data_weeks_expected) {
+  #     cat("\nFORECAST above is UNRELIABLE due to ",data_weeks_expected-data_weeks_avail,"missing week")
+  #   }
+  #   # plot(stlf_w);Sys.sleep(10)
+  # } else {
+  #   warning(country_name," not 2 periods available, not performing stlf prediction")
+  # }
 
-  # --------------------- ETS prediction, using 4weeks ----------------
+  
+  # --------------------- ETS prediction ----------------------------
 
   # old adjustment used in old approach of 4w months+48weeks year, kept just in case
   # week_2remove_nrow <- c(1,seq(from = 4, to = 123, by = 13))
@@ -382,10 +390,10 @@ analyze <- function(country_name,art_sales_df) {
   fit_sales <- ets(ts_sales_m)
   fcast <- forecast(fit_sales, h = 1)
 
-  cat("\n",country_name," next month forecasts (est)",fcast$mean[1]
-      ,"\n(the month mean is: ",sales_avg_month)
+  cat("\n",country_name," next month (ets) forecasts",fcast$mean[1]
+      ," (past months mean: ",sales_avg_month,")")
   if (data_weeks_avail != data_weeks_expected) {
-    cat("\nFORECAST above is UNRELIABLE due to ",data_weeks_expected-data_weeks_avail,"weeks data missing")
+    cat("\nFORECAST above is UNRELIABLE due to ",data_weeks_expected-data_weeks_avail,"weeks of data missing\n")
   }
   
   print(fcast$mean[1])
@@ -434,13 +442,12 @@ analyze <- function(country_name,art_sales_df) {
     # calculating profit from past data we summed nrows_art data points
     profit_opt <- profit_opt * nrows_art
     
+    options(digits = 2)
     print(paste("art:",art,"current price avg",art_current_price_avg,"optim price",opt$maximum
                 ,"intercept",b[1],"slope",b[2],
       "profits[current",profit_from_data,"(theoretical) optim on past data"
                 ,profit_opt,"] theoric profit improvement:", round((profit_opt/profit_from_data-1)*100,2),"%"))
   }
-  
-  cat("") # just for breakpoint
 }
 
 
