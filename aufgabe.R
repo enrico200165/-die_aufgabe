@@ -359,15 +359,40 @@ analyze <- function(country_name,art_sales_df) {
   art_sales_nopromo_sum_dt <- art_sales_dt[ ,list(sales = sum(sales)), by=list(article)]
   print(art_sales_nopromo_sum_dt[1:5]$sales)
   art_sales_order_dt <- art_sales_nopromo_sum_dt[order(-rank(sales)),,]
-  articles_most_sold <-art_sales_nopromo_sum_dt[1:5,,]$article
-  remove(art_sales_order_dt); remove(art_sales_nopromo_sum_dt)
-  cat("\n\n",articles_most_sold)
-  
-  for (art in articles_most_sold) {
+
+  for (art in art_sales_nopromo_sum_dt[1:5,,]$article) {
     print(art)
+
+    # subset all data for each top article into dedicated data table art_dt
     art_dt <- art_sales_nopromo_dt[article == art]
+    # calculate total profit for the article from the data
+    nrows_art <- nrow(art_dt) 
     print(paste("distinct articles",unique(art_dt$article),"nr data rows",nrow(art_dt)))
-    # fit_art <- lm( sadata = art_sales_nopromo_dt)
+    
+    qplot(sales, current_price, data = art_dt)
+    
+    # --- build profit equation to optimize
+    # get sales linear eq coefficients
+    b <- lm(sales ~ current_price, data = art_dt)$coefficients
+    # duplicate other parameters from equation into more user friendly variables
+    art_reg_price <- art_dt[1]$regular_price; 
+    sales_cost <- art_dt[1]$cost
+    # finally assemble the profit equation
+    art_profit <- function(price) {
+      b[2]*price^2+price*(b[1]-b[2]*sales_cost) - sales_cost*b[1]
+    }
+    # optimize profit over price, within real world boundaries (cannot more than half or raise more than 50% a price)
+    opt <- optimize(art_profit,lower = art_reg_price*0.5, upper = art_reg_price*1.5,maximum = TRUE)
+
+    profit_from_data <- sum(art_dt$sales*art_dt$current_price -art_dt$cost)
+    # profit with optimized values
+    sales_opt <- b[1]+b[2]*opt$maximum
+    profit_opt <- sales_opt*(opt$maximum - sales_cost)
+    # calculating profit from past data we summed nrows_art data points
+    profit_opt <- nrows_art * nrows_art
+    
+    print(paste("profits, current: ",profit_from_data,"theoretical profit from project optim to past data",profit_opt,
+          "ratio:", round(profit_opt/profit_from_data*100,2),"%"))
   }
   
   
