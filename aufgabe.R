@@ -107,6 +107,7 @@ results[[mcountry]][["country"]] <- mcountry
 # --- Data Frames to contain resuls and helper functions -----------
 
 
+# unfortunately best place for this and other df helper is among data
 # ------------------------------------------------------------------
 #' Append new row to any data-frame and
 #' if passed (by col. name or col. number) set some values in it
@@ -150,14 +151,13 @@ add_df_row <- function(df,fnames,fvalues,col_idxes,col_values) {
       newrow[[idx]] <- col_values[[i]]
     }
   }
-  
   df <- rbind(df,newrow)
-  
   df
 }
 
 
-
+# --- Effect of discounts and promostons
+# --- results of analysis
 promo_effect_df <- data.frame(
   country = character()
   , promo_name = character()
@@ -166,7 +166,8 @@ promo_effect_df <- data.frame(
   , ydelta = double()
   , deltax_descr = character()
 )
-
+# helper for data frame res_promo_add
+# easily add a new row of data 
 res_promo_add <- function( country, promo_name, deltax_descr
                        , summary_fit_row) {
 
@@ -177,6 +178,35 @@ res_promo_add <- function( country, promo_name, deltax_descr
     fvalues <- list(country, promo_name, stat_signif,  pvalue,  ydelta, deltax_descr)
     promo_effect_df <<- add_df_row(promo_effect_df,fnames,fvalues)
 }
+
+
+# --- Top selling (article) groups ---
+# --- results of analysis
+res_topgroups_df <- data.frame(
+  country = character()
+  , name = character()
+  , sales  = double()
+  , pct_of_tot_sales = double()
+)
+# helper for data frame top_groups_df
+# easily add a new row of data 
+res_top_group_add <- function( country,values,totcountrysales) {
+  
+  v <- as.data.frame(values) # data tables don't work well with subsetting&lvels together
+  levelschar <- as.character(levels(v[,1]))
+  
+  fnames <- c("country", "name" , "sales", "pct_of_tot_sales")
+  for (i in 1:nrow(values)) {
+    levels_val <- which(levels(v[,1]) == v[i,1])
+    fvalues <-list(country, levelschar[levels_val], values[i,2]
+                   ,round(values[i,2]/totcountrysales * 100,2))
+    res_topgroups_df <<- add_df_row(res_topgroups_df, fnames, fvalues)
+  }
+}
+
+
+
+
 
 # -------------------------------------------------------------------
 
@@ -391,7 +421,10 @@ analyze <- function(country_name, art_sales_df) {
   # --- summarize
   sales_prodgroup <- art_sales_dt[ ,list(sales = sum(sales)), by=list(productgroup)]
   sales_prodgroup <- head(sales_prodgroup[order(-rank(sales))],nr_top_items)
+  res_top_group_add(country_name,sales_prodgroup,sales_country_tot)
+
   set_top_items(country_name,"top_prd_grp",sales_prodgroup)
+  
   
   sales_prodgrpcat <- art_sales_dt[ ,list(sales = sum(sales)), by=list(productgroup,category)]
   sales_prodgrpcat <- head(sales_prodgrpcat[order(-rank(sales))],nr_top_items)
@@ -573,6 +606,7 @@ analyze <- function(country_name, art_sales_df) {
 print_results <- function() {
   
   print(promo_effect_df)
+  print(res_topgroups_df)
   
   for (cntry in results) {
     cat(paste("\n--- country:",cntry[["country"]] , " ---\n"))
