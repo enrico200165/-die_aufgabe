@@ -205,6 +205,29 @@ res_top_group_add <- function( country,values,totcountrysales) {
 }
 
 
+# --- Price Optimization  ---
+# --- results of analysis
+res_priceopt_df <- data.frame(
+  country = character()
+  , article = character()
+  , price_recomm  = double()
+  , price_optim  = double()
+  , profit_cur = double()
+  , profit_optim = double()
+  , profit_delta_pct = double()
+)
+# helper for data frame top_groups_df
+# easily add a new row of data 
+res_priceopt_add <- function(country, article, price_recomm,price_optim,profit_cur,profit_optim) {
+  
+  fnames   <- c("country","article","price_recomm","price_optim","profit_cur","profit_optim","profit_delta_pct")
+  fvalues <-list(country,  article,  price_recomm,  price_optim,  profit_cur,  profit_optim
+                 ,round(profit_optim/profit_cur*100-100,2))
+  res_priceopt_df <<- add_df_row(res_priceopt_df, fnames, fvalues)
+}
+# xxx
+
+
 
 
 
@@ -545,7 +568,7 @@ analyze <- function(country_name, art_sales_df) {
   #               PRICE OPTIMIZATION
   #--------------------------------------------------------------------
 
-  # consider sales without promotions
+  # consider ONLY sales without promotions
   art_sales_nopromo_dt <- art_sales_dt[promo_status == "none" , ]
   cat("\n",nrow(art_sales_nopromo_dt),"out of",nrow(art_sales_dt),"ie"
       ,nrow(art_sales_nopromo_dt)/nrow(art_sales_dt)*100,"%\n")
@@ -593,6 +616,10 @@ analyze <- function(country_name, art_sales_df) {
                   ,"intercept",b[1],"slope",b[2],
                   "profits[current",profit_from_data,"(theoretical) optim on past data"
                   ,profit_opt,"] theoric profit improvement:", round((profit_opt/profit_from_data)*100-100,2),"%"))
+      
+      # yyy
+      res_priceopt_add(country_name, art, art_reg_price,opt$maximum,profit_from_data,profit_opt)
+        
       art_dt <- NULL
       nr_prices_optim <- nr_prices_optim + 1
       if (nr_prices_optim >= 5)
@@ -607,7 +634,8 @@ print_results <- function() {
   
   print(promo_effect_df)
   print(res_topgroups_df)
-  
+  print(res_priceopt_df)
+    
   for (cntry in results) {
     cat(paste("\n--- country:",cntry[["country"]] , " ---\n"))
     cntry_str = ""
