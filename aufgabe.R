@@ -21,12 +21,12 @@
 #'  Currently the structure of this code for lack of time does not allow that
 
 
-# suppressWarnings(suppressMessages(library(dplyr)))
+# suppressWarnings(suppressMessages(library(data.table)))
 
 # --- structural ---
 library(dtplyr)
-# library(dplyr)
-# library(data.table)
+library(dplyr)
+library(data.table)
 
 # -- stats etc ---
 library(forecast)
@@ -38,6 +38,7 @@ library(lubridate)
 # library(xts)
 
 # -- output&reprots ---
+library(gridExtra)
 library(ggplot2)
 # library(knitr)
 
@@ -51,6 +52,9 @@ options(warn=1)
 alpha <- 0.05
 cap <- FALSE # whether to cap outliers or not
 
+test_run <- FALSE # whether to run eventual test/debug functions
+show_plots <- FALSE # mostly used not to show some plots that take time
+
 # data files
 articles_fname <- "article_master.txt"
 sales_fname <- "sales.txt"
@@ -59,11 +63,18 @@ field_sep <- ";"
 
 nr_top_items <- 5 # nr of best performing items reported
 
-# reduce risk of typos
+
+# -- reduce risk of typos
+
 france <- "France";
 germany <-"Germany";
 austria <-"Austria"; 
 mcountry="mcountry"; # pseudo-country, analyze all data/countries together
+
+
+discount <- "discount"
+media <- "media"
+store <- "store"
 
 
 # --- (TENTATIVE) create and init container for analys of results, awkward for now ---
@@ -93,7 +104,8 @@ results[[austria]][["country"]] <- austria
 results[[mcountry]][["country"]] <- mcountry
 
 
-# -------------------------------------------------------------------
+# --- Data Frames to contain resuls and helper functions -----------
+
 
 # ------------------------------------------------------------------
 #' Append new row to any data-frame and
@@ -118,31 +130,55 @@ results[[mcountry]][["country"]] <- mcountry
 #' rather dirty but better than nothing and works ok for small datframes
 #' manually filled with analysis results
 # ------------------------------------------------------------------
-add_emptydf_row <- function(df,fnames,fvalues,col_idxes,col_values) {
-
-    # create dummy row matrix
+add_df_row <- function(df,fnames,fvalues,col_idxes,col_values) {
+  
+  # create dummy row matrix
   newrow <- data.frame(matrix(c(rep.int(NA,length(df))),nrow=1,ncol=length(df)))
-  colnames(newrow) <- colnames(res_df)
-
+  colnames(newrow) <- colnames(df)
+  
   # set vectors of values passed by column names (names in fnames, values in fvalues)
   if (!missing(fnames)) {
     for (i in 1:length(fnames)) {
       newrow[[fnames[i]]] <- fvalues[i]
     }
   }
-
+  
   # set vectors of values passed by column index (idx in col_idxes, values in col_values)
-    if (!missing(col_idxes)) {
+  if (!missing(col_idxes)) {
     for (i in 1:length(col_idxes)) {
       idx <- col_idxes[i]
       newrow[[idx]] <- col_values[[i]]
     }
   }
-
+  
   df <- rbind(df,newrow)
   
   df
 }
+
+
+
+promo_effect_df <- data.frame(
+  country = character()
+  , promo_name = character()
+  , stat_signif = logical()
+  , pvalue  = double()
+  , ydelta = double()
+  , deltax_descr = character()
+)
+
+res_promo_add <- function( country, promo_name, deltax_descr
+                       , summary_fit_row) {
+
+    stat_signif <- summary_fit_row[4] < alpha
+    pvalue <-      summary_fit_row[4]
+    ydelta <- summary_fit_row[1]
+    fnames <- c("country", "promo_name","stat_signif","pvalue","ydelta","deltax_descr")
+    fvalues <- list(country, promo_name, stat_signif,  pvalue,  ydelta, deltax_descr)
+    promo_effect_df <<- add_df_row(promo_effect_df,fnames,fvalues)
+}
+
+# -------------------------------------------------------------------
 
 
 
@@ -165,17 +201,16 @@ res_df[2,]$country <- germany;
 res_df[3,]$country <- france;
 res_df[4,]$country <- austria;
 
-values = list("padania",99)
-names <- c("country","sales_tot")
-# new_df <- add_emptydf_row(res_df,"country","italy",2,99)
-new_df <- add_emptydf_row(res_df,names,values)
-new_df <- add_emptydf_row(res_df,,values,c(1,3),values)
+if (test_run) {
+  values = list("padania", 99)
+  names <- c("country", "sales_tot")
+  # new_df <- add_emptydf_row(res_df,"country","italy",2,99)
+  new_df <- add_emptydf_row(res_df, names, values)
+  new_df <- add_emptydf_row(res_df, , values, c(1, 3), values)
+  print(res_df)
+  print(new_df)
+}
 
-print(res_df)
-print(new_df)
-
-
-stop(0)
 
 
 # ------------------------------------------------------------------
@@ -398,25 +433,9 @@ analyze <- function(country_name, art_sales_df) {
   # lines(xfit, yfit)
   
   # store the results (tentative)
-  set_discpromos(country_name,"discount",summary(fit_promo_disc)$coeff[2, ])
-  set_discpromos(country_name,"media",summary(fit_promo_disc)$coeff[3, ])
-  set_discpromos(country_name,"store",summary(fit_promo_disc)$coeff[4, ])
-  
-
-  cat("DISCOUNT","\neffectiveness supported by data: ",(summary(fit_promo_disc)$coefficients[2,4] < alpha )
-      ,"\n1% discount > delta sales:",summary(fit_promo_disc)$coefficient[2,1],"items"
-      ,"\np value:", summary(fit_promo_disc)$coefficients[2,4])
-
-  cat("\nMEDIA promos","\neffectiveness supported by data: "
-    ,(summary(fit_promo_disc)$coefficients[3,4] < alpha )
-    ,"\naverage sales increase:", round(summary(fit_promo_disc)$coefficients[3,1],2)
-    ,"\np value: ", summary(fit_promo_disc)$coefficients[3,4])
-
-  cat("\nSTORE promos"
-      ,"\neffectiveness supported by data: ",(summary(fit_promo_disc)$coefficients[4,4] < alpha )
-      ,"\naverage sales increase: ", round(summary(fit_promo_disc)$coefficients[4,1],2)
-      ,"\np value: ", summary(fit_promo_disc)$coefficients[4,4]
-  )
+  res_promo_add(country_name, discount, "+1% discount", summary(fit_promo_disc)$coeff[2, ])
+  res_promo_add(country_name, media,    "promo ON"    , summary(fit_promo_disc)$coeff[3, ])
+  res_promo_add(country_name, store,    "promo ON"    , summary(fit_promo_disc)$coeff[4, ])
 
   # -----------------------------------------------------------------
   #                     PREDICT
@@ -531,7 +550,7 @@ analyze <- function(country_name, art_sales_df) {
       opt <- optimize(art_profit,lower = art_reg_price*0.5, upper = art_reg_price*10,maximum = TRUE)
       
       profit_from_data <- sum(art_dt$sales*art_dt$current_price -art_dt$cost)
-      # profit with optimized values
+      # profit with optimized valuespromo_effect_df
       sales_opt <- b[1]+b[2]*opt$maximum
       profit_opt <- sales_opt*(opt$maximum - sales_cost)
       # calculating profit from past data we summed nrows_art data points
@@ -552,6 +571,8 @@ analyze <- function(country_name, art_sales_df) {
 
 
 print_results <- function() {
+  
+  print(promo_effect_df)
   
   for (cntry in results) {
     cat(paste("\n--- country:",cntry[["country"]] , " ---\n"))
