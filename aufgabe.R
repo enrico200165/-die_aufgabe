@@ -143,10 +143,10 @@ add_df_row <- function(df,fnames,fvalues,col_idxes,col_values) {
 promo_effect_df <- data.frame(
   country = character()
   , promo_name = character()
+  , deltax_descr = character()
   , stat_signif = logical()
   , pvalue  = double()
   , ydelta = double()
-  , deltax_descr = character()
 )
 # helper for data frame res_promo_add
 # easily add a new row of data 
@@ -155,7 +155,7 @@ res_promo_add <- function( country, promo_name, deltax_descr
 
     stat_signif <- summary_fit_row[4] < alpha
     pvalue <-      summary_fit_row[4]
-    ydelta <- summary_fit_row[1]
+    ydelta <- round(summary_fit_row[1],2)
     fnames <- c("country", "promo_name","stat_signif","pvalue","ydelta","deltax_descr")
     fvalues <- list(country, promo_name, stat_signif,  pvalue,  ydelta, deltax_descr)
     promo_effect_df <<- add_df_row(promo_effect_df,fnames,fvalues)
@@ -177,7 +177,8 @@ res_top_group_add <- function( country,values,totcountrysales) {
   
   v <- as.data.frame(values) # data tables don't work well with subsetting&lvels together
   levelschar <- as.character(levels(v[,1]))
-  
+  levelschar[which(levelschar == "HARDWARE ACCESSORIES")] <- "HW ACCS."
+
   fnames <- c("country", "name" , "sales", "pct_of_tot_sales")
   for (i in 1:nrow(values)) {
     levels_val <- which(levels(v[,1]) == v[i,1])
@@ -205,8 +206,8 @@ res_priceopt_df <- data.frame(
 res_priceopt_add <- function(country, article, price_recomm,price_optim,profit_cur,profit_optim) {
   
   fnames   <- c("country","article","price_recomm","price_optim","profit_cur","profit_optim","profit_delta_pct")
-  fvalues <-list(country,  article,  price_recomm,  price_optim,  profit_cur,  profit_optim
-                 ,round(profit_optim/profit_cur*100-100,2))
+  fvalues <-list(country,  article,  price_recomm,  round(price_optim,2),  round(profit_cur,0)
+    , round(profit_optim,0),round(profit_optim/profit_cur*100-100,2))
   res_priceopt_df <<- add_df_row(res_priceopt_df, fnames, fvalues)
 }
 
@@ -319,8 +320,7 @@ load_preprocess_alldata <- function() {
   colnames(art_sales_df)[which(colnames(art_sales_df) == "promo1")] <- "promo_media"
   colnames(art_sales_df)[which(colnames(art_sales_df) == "promo2")] <- "promo_store"
   
-
-  # ----- add variables to work more easily (resources allow it -----
+  # ----- add variables to work more easily (resources allow it) ----
   
   # simple/readable discount as percentage
   art_sales_df$discount <- (1 - art_sales_df$ratio)*100 # in percentage
@@ -430,7 +430,7 @@ analyze <- function(country_name, art_sales_df) {
   # lines(xfit, yfit)
   
   # store the results (tentative)
-  res_promo_add(country_name, discount, "+1% discount", summary(fit_promo_disc)$coeff[2, ])
+  res_promo_add(country_name, discount, "disc.+1%", summary(fit_promo_disc)$coeff[2, ])
   res_promo_add(country_name, media,    "promo ON"    , summary(fit_promo_disc)$coeff[3, ])
   res_promo_add(country_name, store,    "promo ON"    , summary(fit_promo_disc)$coeff[4, ])
 
@@ -586,22 +586,27 @@ analyze <- function(country_name, art_sales_df) {
 
 
 
-quickprint_results <- function() {
+quickprint_results <- function(country_name) {
   
-  print("------ PROMO & DISCOUNT EFFECTIVENESS ------")
-  print(promo_effect_df)
+  print("");print("");
+  print("######################################################################")
+  print(paste("            ",toupper(country_name)))
+  print("######################################################################")
+  
+  print("");print("------ PROMO & DISCOUNT EFFECTIVENESS ------")
+  print(promo_effect_df[promo_effect_df$country == country_name, ])
   # grid.table(promo_effect_df) abandoned, no time to complete 
   # automatic plots, .rmd/slidify
   
   print("");print("------ ARTICLE GROUPS MOST SOLD ------")
-  print(res_topgroups_df)
+  print(res_topgroups_df[res_topgroups_df$country == country_name, ])
 
   print("");print("------ PRICE OPTIMIZATION ON TOP ARTICLES ------")
-  print(res_priceopt_df)
+  print(res_priceopt_df[res_priceopt_df$country == country_name, ])
   
   print("");print("------ SALES PREDICTION ------")
-  print(res_artgrouppredict_df)
-    
+  print(res_artgrouppredict_df[res_artgrouppredict_df$country == country_name, ])
+  print("");
 }
 
 
@@ -615,6 +620,9 @@ analyze(germany,art_sales_df_all[art_sales_df_all$country == germany , ])
 analyze(france, art_sales_df_all[art_sales_df_all$country == france  , ])
 analyze(austria,art_sales_df_all[art_sales_df_all$country == austria , ])
 
-quickprint_results()
+quickprint_results(germany)
+quickprint_results(austria)
+quickprint_results(france)
+
 
 
