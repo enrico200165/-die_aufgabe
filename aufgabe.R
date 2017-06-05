@@ -20,6 +20,9 @@
 #' content can be automatically inserted in .rmd or in slides with slidify.
 #'  Currently the structure of this code for lack of time does not allow that
 
+
+suppressWarnings(suppressMessages(library(dplyr)))
+
 # --- structural ---
 library(dplyr)
 library(data.table)
@@ -87,6 +90,28 @@ results[[germany]][["country"]] <- germany
 results[[france]][["country"]] <- france
 results[[austria]][["country"]] <- austria
 results[[mcountry]][["country"]] <- mcountry
+
+
+# -------------------------------------------------------------------
+
+res_df <- data.frame(country = character()
+                      ,sales_tot = double(),sales_avg_m = double(), sales_avg_w = double()
+                      ,mediap_eff = logical(),mediap_lift = double()
+                      ,storep_eff = logical(),storep_lift = double()
+                      ,bothp_eff=logical(),bothp_lift =double()
+                      ,discount_sales_coeff = double()
+)
+temprow <- matrix(c(rep.int(NA,length(res_df))),nrow=1,ncol=length(res_df))
+newrow <- data.frame(temprow)
+colnames(newrow) <- colnames(res_df)
+res_df <- rbind(res_df,newrow,newrow,newrow,newrow)
+
+res_df[1,]$country <- mcountry;
+res_df[2,]$country <- germany;
+res_df[3,]$country <- france;
+res_df[4,]$country <- austria;
+
+
 
 
 
@@ -442,13 +467,6 @@ analyze <- function(country_name, art_sales_df) {
       xyz <- art_profit(0); # debug
       # optimize profit over price
       opt <- optimize(art_profit,lower = art_reg_price*0.5, upper = art_reg_price*10,maximum = TRUE)
-      
-      # check for debug
-      art_profit2 <- function(price) {
-        profit <- b[2]*price^2+price*(b[1]-b[2]*sales_cost) - sales_cost*b[1]
-        profit*-1
-      }
-      op2 <- optim(art_reg_price*0.0,fn = art_profit2, method="CG")
       
       profit_from_data <- sum(art_dt$sales*art_dt$current_price -art_dt$cost)
       # profit with optimized values
