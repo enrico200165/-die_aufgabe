@@ -21,11 +21,12 @@
 #'  Currently the structure of this code for lack of time does not allow that
 
 
-suppressWarnings(suppressMessages(library(dplyr)))
+# suppressWarnings(suppressMessages(library(dplyr)))
 
 # --- structural ---
-library(dplyr)
-library(data.table)
+library(dtplyr)
+# library(dplyr)
+# library(data.table)
 
 # -- stats etc ---
 library(forecast)
@@ -94,6 +95,59 @@ results[[mcountry]][["country"]] <- mcountry
 
 # -------------------------------------------------------------------
 
+# ------------------------------------------------------------------
+#' Append new row to any data-frame and
+#' if passed (by col. name or col. number) set some values in it
+#' @param df dataframe
+#' 
+#' @param fnames optional
+#' vector of columun/var names. 
+#' positionally related to fvalues
+#' @param fvalues optional, necessary for fnames
+#' list of values to set, position i contains value for comun with name fnames[i]
+#' 
+#' @param col_idxes optional, 
+#' vector of idexes of clomuns to fill with values from col_values
+#' @col_values optional but necessary for col_values
+#' list of values to set, ith value to column with index contained 
+#' in col_idxes[i]
+#' 
+#' @return data frame with new row appended
+#' 
+#' @details
+#' rather dirty but better than nothing and works ok for small datframes
+#' manually filled with analysis results
+# ------------------------------------------------------------------
+add_emptydf_row <- function(df,fnames,fvalues,col_idxes,col_values) {
+
+    # create dummy row matrix
+  newrow <- data.frame(matrix(c(rep.int(NA,length(df))),nrow=1,ncol=length(df)))
+  colnames(newrow) <- colnames(res_df)
+
+  # set vectors of values passed by column names (names in fnames, values in fvalues)
+  if (!missing(fnames)) {
+    for (i in 1:length(fnames)) {
+      newrow[[fnames[i]]] <- fvalues[i]
+    }
+  }
+
+  # set vectors of values passed by column index (idx in col_idxes, values in col_values)
+    if (!missing(col_idxes)) {
+    for (i in 1:length(col_idxes)) {
+      idx <- col_idxes[i]
+      newrow[[idx]] <- col_values[[i]]
+    }
+  }
+
+  df <- rbind(df,newrow)
+  
+  df
+}
+
+
+
+
+
 res_df <- data.frame(country = character()
                       ,sales_tot = double(),sales_avg_m = double(), sales_avg_w = double()
                       ,mediap_eff = logical(),mediap_lift = double()
@@ -111,9 +165,17 @@ res_df[2,]$country <- germany;
 res_df[3,]$country <- france;
 res_df[4,]$country <- austria;
 
+values = list("padania",99)
+names <- c("country","sales_tot")
+# new_df <- add_emptydf_row(res_df,"country","italy",2,99)
+new_df <- add_emptydf_row(res_df,names,values)
+new_df <- add_emptydf_row(res_df,,values,c(1,3),values)
+
+print(res_df)
+print(new_df)
 
 
-
+stop(0)
 
 
 # ------------------------------------------------------------------
