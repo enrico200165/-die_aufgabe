@@ -38,6 +38,7 @@ library(lubridate)
 # library(xts)
 
 # -- output&reprots ---
+library(grid)
 library(gridExtra)
 library(ggplot2)
 # library(knitr)
@@ -77,11 +78,17 @@ media <- "media"
 store <- "store"
 
 
-
+# ------------------------------------------------------------------
 # --- Data Frames to contain resuls and helper functions -----------
+# ------------------------------------------------------------------
+# data frames were meant to 
+# - easily produce graphs and plots with ggplot2
+# - be displayed in .rmd/slidify documents
+# for lack of time has not been possible to use ggplot2, .rmd/slidy 
 
 
-# unfortunately best place for this and other df helper is among data
+# general (not generic as mean in R) service function for data frames
+# must be here among data for things to work
 # ------------------------------------------------------------------
 #' Append new row to any data-frame and
 #' if passed (by col. name or col. number) set some values in it
@@ -125,9 +132,10 @@ add_df_row <- function(df,fnames,fvalues,col_idxes,col_values) {
       newrow[[idx]] <- col_values[[i]]
     }
   }
-  df <- rbind(df,newrow)
+  df <- rbind(df,newrow,row.names = NULL)
   df
 }
+
 
 
 # --- Effect of discounts and promostons
@@ -154,6 +162,7 @@ res_promo_add <- function( country, promo_name, deltax_descr
 }
 
 
+
 # --- Top selling (article) groups ---
 # --- results of analysis
 res_topgroups_df <- data.frame(
@@ -177,6 +186,7 @@ res_top_group_add <- function( country,values,totcountrysales) {
     res_topgroups_df <<- add_df_row(res_topgroups_df, fnames, fvalues)
   }
 }
+
 
 
 # --- Price Optimization  ---
@@ -225,6 +235,7 @@ res_artgrouppredict_add <- function( country,article,sales_predict,sales_past_av
 
     res_artgrouppredict_df <<- add_df_row(res_artgrouppredict_df, fnames, fvalues)
 }
+
 
 
 
@@ -304,13 +315,13 @@ load_preprocess_alldata <- function() {
   # head(art_sales_df$retailweek);tail(art_sales_df$retailweek) # paranoid check
   
 
-  # -------------------- make var names more readable ------------------- 
+  # --------------- make var names more readable -------------------- 
   colnames(art_sales_df)[which(colnames(art_sales_df) == "promo1")] <- "promo_media"
   colnames(art_sales_df)[which(colnames(art_sales_df) == "promo2")] <- "promo_store"
   
 
   # ----- add variables to work more easily (resources allow it -----
-
+  
   # simple/readable discount as percentage
   art_sales_df$discount <- (1 - art_sales_df$ratio)*100 # in percentage
 
@@ -335,17 +346,7 @@ load_preprocess_alldata <- function() {
   art_sales_dt <-  data.table(art_sales_df)
   sales_country <- art_sales_dt[ , list(sales = sum(sales), sales_avg = mean(sales)) ,by=list(country)]
   
-  apply(sales_country,1,function(cur_row) { 
-    country <- cur_row[1]
-    results[[country]]$sales_tot <<- as.numeric(cur_row[2]);
-    })
-  
   sales_tot_allcountries <-sum(art_sales_dt$sales)
-  if (sales_tot_allcountries == (results[[germany]]$sales_tot + results[[france]]$sales_tot + results[[austria]]$sales_tot)) {
-    results[[mcountry]]$sales_tot <<- sales_tot_allcountries;
-  } else {
-    stop("calculation problem, tot sales")
-  }
 
   return(art_sales_df)
 }
@@ -392,15 +393,6 @@ analyze <- function(country_name, art_sales_df) {
   # taken as: which country, product group, category, article sell the most
   # -------------------------------------------------------------------
   
-  set_top_items <- function(country, fieldnameroot, values) {
-    namefield <- paste(fieldnameroot,"_names",sep="");
-    salesfield <- paste(fieldnameroot,"_sales",sep="");
-    pctfield <- paste(fieldnameroot,"_pct",sep="");
-    results[[country]][[namefield]]   <<- as.character(values[ ,1][[1]])
-    results[[country]][[salesfield]] <<- as.vector(values[ ,2])
-    results[[country]][[pctfield]] <<- round(as.vector(values[,2])/sales_country_tot*100,2)
-  }
-
   sales_country_tot <- sum(art_sales_dt$sales)
   cat(country_name,"tot sales",sales_country_tot)
   # --- summarize
@@ -408,16 +400,14 @@ analyze <- function(country_name, art_sales_df) {
   sales_prodgroup <- head(sales_prodgroup[order(-rank(sales))],nr_top_items)
   res_top_group_add(country_name,sales_prodgroup,sales_country_tot)
 
-  set_top_items(country_name,"top_prd_grp",sales_prodgroup)
-  
-  
+
   sales_prodgrpcat <- art_sales_dt[ ,list(sales = sum(sales)), by=list(productgroup,category)]
   sales_prodgrpcat <- head(sales_prodgrpcat[order(-rank(sales))],nr_top_items)
-  set_top_items(country_name,"top_prd_grpcat",sales_prodgrpcat[,c(2,3)])
+  # produced but not used
   
   sales_article <- art_sales_dt[, list(sales = sum(sales)), by=list(article)]
   sales_article <- head(sales_article[order(-rank(sales))],nr_top_items)
-  set_top_items(country_name,"top_prd_art",sales_article)
+  # produced but not used
   
   # head(sales_article)
   
@@ -425,18 +415,7 @@ analyze <- function(country_name, art_sales_df) {
   #                 EFFECT OF PROMOS AND DISCOUNTS
   # -------------------------------------------------------------------
 
-  # don't waste time looking at this, helper function to simplify filling 
-  # some fields of the awkward data structure where I started to store results
-  # night not use that structure or change it to some data-frames
-  set_discpromos <- function(country, fieldnameroot, coeff_row) {
-    field_effect <- paste(fieldnameroot,"_eff",sep="");
-    field_lift <- paste(fieldnameroot,"_lift",sep="");
-    field_p <- paste(fieldnameroot,"_p",sep="");
-    results[[country]][[field_effect]]   <<-(coeff_row[4] < alpha)
-    results[[country]][[field_lift]]     <<- coeff_row[1]
-    results[[country]][[field_p]]        <<- coeff_row[4]
-  }
-    
+
   fit_promo_disc <- lm(sales ~ discount * promo_media * promo_store, data = art_sales_df)
   # fit_promo_disc <- lm(sales ~ discount + promo_media + promo_store, data = art_sales_df)
   # print(vif(fit_promo_disc))
@@ -495,7 +474,7 @@ analyze <- function(country_name, art_sales_df) {
   # }
 
   
-  # --------------------- ETS prediction ----------------------------
+  # --------------------- (ets) prediction --------------------------
 
   # old adjustment used in old approach of 4w months+48weeks year, kept just in case
   # week_2remove_nrow <- c(1,seq(from = 4, to = 123, by = 13))
@@ -539,14 +518,16 @@ analyze <- function(country_name, art_sales_df) {
   cat("\n",nrow(art_sales_nopromo_dt),"out of",nrow(art_sales_dt),"ie"
       ,nrow(art_sales_nopromo_dt)/nrow(art_sales_dt)*100,"%\n")
   
-  # find articles most sold
+  # find articles that sold more items, very simplistic choice, other choices
+  # (largest revenue based on recommended price ,a mix of revenue and delta between
+  # recommended and actul prices) would have been more useful and easy to implement
+  # unfortunately ran too short of time to implement them
   art_sales_nopromo_sum_dt <- art_sales_nopromo_dt[ ,list(sales = sum(sales)), by=list(article)]
   art_sales_order_dt <- art_sales_nopromo_sum_dt[order(-rank(sales)),,]
   # print(head(art_sales_order_dt$sales,10))
 
   nr_prices_optim <- 0
   for (art in art_sales_order_dt$article) {
-
     # subset all data for each top article into dedicated data table art_dt
     art_dt <- art_sales_nopromo_dt[article == art]
     nrows_art <- nrow(art_dt) 
@@ -556,7 +537,7 @@ analyze <- function(country_name, art_sales_df) {
     fit <- lm(sales ~ current_price, data = art_dt)
     b <- fit$coefficients; 
     if (summary(fit)$coefficients[1,4] >= alpha | (summary(fit)$coefficients[2,4] >= alpha)) {
-      warning(paste(art,"non meaningful coefficients",summary(fit)$coefficients[1,4] ,summary(fit)$coefficients[2,4] ))
+      # print(paste(art,"non meaningful coefficients",summary(fit)$coefficients[1,4] ,summary(fit)$coefficients[2,4] ))
     } else {
       # duplicate other parameters from equation into more user friendly variables
       art_reg_price <- art_dt[1]$regular_price;
@@ -578,16 +559,25 @@ analyze <- function(country_name, art_sales_df) {
       # calculating profit from past data we summed nrows_art data points
       profit_opt <- profit_opt * nrows_art
       
-      print(paste("art:",art,"current price avg",art_current_price_avg,"optim price",opt$maximum
-                  ,"intercept",b[1],"slope",b[2],
-                  "profits[current",profit_from_data,"(theoretical) optim on past data"
-                  ,profit_opt,"] theoric profit improvement:", round((profit_opt/profit_from_data)*100-100,2),"%"))
       
-      # yyy
-      res_priceopt_add(country_name, art, art_reg_price,opt$maximum,profit_from_data,profit_opt)
+      if (profit_opt > profit_from_data) {
+        # print(paste("art:",art,"current price avg",art_current_price_avg,"optim price",opt$maximum
+        #             ,"intercept",b[1],"slope",b[2],
+        #             "profits[current",profit_from_data,"(theoretical) optim on past data"
+        #             ,profit_opt,"] theoric profit improvement:", round((profit_opt/profit_from_data)*100-100,2),"%"))
+        res_priceopt_add(country_name, art, art_reg_price,opt$maximum,profit_from_data,profit_opt)
         
-      art_dt <- NULL
-      nr_prices_optim <- nr_prices_optim + 1
+        art_dt <- NULL # paranoid clean up because of strange behaviours of R
+        nr_prices_optim <- nr_prices_optim + 1
+      } else {
+        # profit from real/provided data is greater than that of optimized price
+        # we have just one single optimized price per article and "project" it 
+        # prices in the data can differ across sales, "large" prices can happen to be
+        # with large sales
+        # we only consider interesting and report cases where optimized price increases revenue
+      }
+      
+      
       if (nr_prices_optim >= 5)
         break;
     }
@@ -596,11 +586,20 @@ analyze <- function(country_name, art_sales_df) {
 
 
 
-print_results <- function() {
+quickprint_results <- function() {
   
+  print("------ PROMO & DISCOUNT EFFECTIVENESS ------")
   print(promo_effect_df)
+  # grid.table(promo_effect_df) abandoned, no time to complete 
+  # automatic plots, .rmd/slidify
+  
+  print("");print("------ ARTICLE GROUPS MOST SOLD ------")
   print(res_topgroups_df)
+
+  print("");print("------ PRICE OPTIMIZATION ON TOP ARTICLES ------")
   print(res_priceopt_df)
+  
+  print("");print("------ SALES PREDICTION ------")
   print(res_artgrouppredict_df)
     
 }
@@ -616,7 +615,6 @@ analyze(germany,art_sales_df_all[art_sales_df_all$country == germany , ])
 analyze(france, art_sales_df_all[art_sales_df_all$country == france  , ])
 analyze(austria,art_sales_df_all[art_sales_df_all$country == austria , ])
 
-print_results()
-
+quickprint_results()
 
 
