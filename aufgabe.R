@@ -77,32 +77,6 @@ media <- "media"
 store <- "store"
 
 
-# --- (TENTATIVE) create and init container for analys of results, awkward for now ---
-results_row <- list(
-   country = character()
-  ,sales_tot = -1
-  ,top_prd_grp_names = character(), top_prd_grp_sales = numeric(), top_prd_grp_pct = numeric()
-  ,top_prd_grpcat_names = character(), top_prd_grpcat_sales = numeric()
-  ,top_prd_art_names = character(), top_prd_art_sales = numeric()
-  ,sales_avg_m = -1
-  ,sales_avg_w = -1
-
-  ,mediap_eff = FALSE,mediap_lift = -1,media_p = -1
-  ,storep_eff = FALSE,storep_lift = -1,store_p = -1
-  ,discount_eff = FALSE,discount_lift = -1, discount_p = -1
-  
-  )
-results <- list(
-  Germany = results_row
-  ,France = results_row
-  ,Austria = results_row
-  ,mcountry = results_row)
-
-results[[germany]][["country"]] <- germany
-results[[france]][["country"]] <- france
-results[[austria]][["country"]] <- austria
-results[[mcountry]][["country"]] <- mcountry
-
 
 # --- Data Frames to contain resuls and helper functions -----------
 
@@ -225,43 +199,31 @@ res_priceopt_add <- function(country, article, price_recomm,price_optim,profit_c
                  ,round(profit_optim/profit_cur*100-100,2))
   res_priceopt_df <<- add_df_row(res_priceopt_df, fnames, fvalues)
 }
-# xxx
 
 
 
-
-
-# -------------------------------------------------------------------
-
-
-
-
-
-res_df <- data.frame(country = character()
-                      ,sales_tot = double(),sales_avg_m = double(), sales_avg_w = double()
-                      ,mediap_eff = logical(),mediap_lift = double()
-                      ,storep_eff = logical(),storep_lift = double()
-                      ,bothp_eff=logical(),bothp_lift =double()
-                      ,discount_sales_coeff = double()
+# --- Article Groups Predictions ---
+# --- results of analysis
+res_artgrouppredict_df <- data.frame(
+   country = character()
+  ,article = character()
+  ,sales_predict  = double()
+  ,sales_past_average = double()
+  ,nr_week_data_expected = integer()
+  ,nr_week_data_available = integer()
 )
-temprow <- matrix(c(rep.int(NA,length(res_df))),nrow=1,ncol=length(res_df))
-newrow <- data.frame(temprow)
-colnames(newrow) <- colnames(res_df)
-res_df <- rbind(res_df,newrow,newrow,newrow,newrow)
+# helper for data frame top_groups_df
+# easily add a new row of data 
+res_artgrouppredict_add <- function( country,article,sales_predict,sales_past_average
+  ,nr_week_data_expected,nr_week_data_available) {
+  
+  fnames <- c("country", "article" , "sales_predict", "sales_past_average"
+              ,"nr_week_data_expected","nr_week_data_available")
 
-res_df[1,]$country <- mcountry;
-res_df[2,]$country <- germany;
-res_df[3,]$country <- france;
-res_df[4,]$country <- austria;
+  fvalues <-list(country, article, sales_predict, sales_past_average
+    ,as.integer(nr_week_data_expected),as.integer(nr_week_data_available))
 
-if (test_run) {
-  values = list("padania", 99)
-  names <- c("country", "sales_tot")
-  # new_df <- add_emptydf_row(res_df,"country","italy",2,99)
-  new_df <- add_emptydf_row(res_df, names, values)
-  new_df <- add_emptydf_row(res_df, , values, c(1, 3), values)
-  print(res_df)
-  print(new_df)
+    res_artgrouppredict_df <<- add_df_row(res_artgrouppredict_df, fnames, fvalues)
 }
 
 
@@ -554,6 +516,9 @@ analyze <- function(country_name, art_sales_df) {
   fit_sales <- ets(ts_sales_m)
   fcast <- forecast(fit_sales, h = 1)
 
+  res_artgrouppredict_add(country_name,"all-groups",fcast$mean[1],sales_avg_month
+                          ,data_weeks_expected,data_weeks_avail) 
+  
   cat("\n",country_name," next month (ets) forecasts",fcast$mean[1]
       ," (past months mean: ",sales_avg_month,")")
   if (data_weeks_avail != data_weeks_expected) {
@@ -564,6 +529,7 @@ analyze <- function(country_name, art_sales_df) {
   par(mfrow=c(1,1));plot(fcast)
   
 
+  
   #--------------------------------------------------------------------
   #               PRICE OPTIMIZATION
   #--------------------------------------------------------------------
@@ -635,23 +601,8 @@ print_results <- function() {
   print(promo_effect_df)
   print(res_topgroups_df)
   print(res_priceopt_df)
+  print(res_artgrouppredict_df)
     
-  for (cntry in results) {
-    cat(paste("\n--- country:",cntry[["country"]] , " ---\n"))
-    cntry_str = ""
-    cntry_str <- paste(cntry_str,"top groups:")
-    tmp <- paste(cntry[["top_prd_grp_names"]], collapse = ' ')
-    cntry_str <- paste(cntry_str,tmp)
-
-    tmp <- paste(cntry[["top_prd_grp_sales"]])
-    cntry_str <- paste(cntry_str,tmp)
-
-    tmp <- paste(cntry[["top_prd_grp_pct"]])
-    cntry_str <- paste(cntry_str,tmp)
-    
-        
-    print(cntry_str)
-  }
 }
 
 
