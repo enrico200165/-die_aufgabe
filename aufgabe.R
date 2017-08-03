@@ -1,24 +1,26 @@
 #'
-#' ANALYSIS OF SALES DATA ASSIGNMENT
+#' ANALYSIS OF SALES DATA
 #' 
-#' @author Enrico V
+#' @author Enrico
+#' 
 #' @details
+#' Analysis of sales data
+#' PROTOTYPE code to demonstrate feasibility
 #' 
-#' Code is developed as an assignment, not as a real world production code
-#' (also for lack of time) nonetheless where possible some realism has been
-#' pursued. Assignment reads "market managers of Germany, Austria and France 
-#' would  like..." so the code has been structured to be able to perform analysis
-#' by simple country and of all the countries together by isolating the analysis
-#' in a functions that takes the data set as a parameter.
+#' The code has been structured to be able to perform analysis
+#' both by single country and over all the countries together, 
+#' by isolating the analysis in a functions that takes the data 
+#' set as a parameter.
 #' 
-#' If this were "real world" code to be run periodically to produce reports
-#' the best approach would be to produce and .rmd document with code embedded
-#' ( http://rmarkdown.rstudio.com/ ) and use slidify 
+#' If this code is evolved to be run regularly to produce reports the 
+#' best approach would be to produce and .rmd document with code 
+#' embedded ( http://rmarkdown.rstudio.com/ ) and use slidify 
 #' (http://slidify.org/samples/intro/#1  ) if slides are needed
-#' The approach above requires putting the results of the analysis in proper
-#' data structures (data frames Etc.) from which produce plots$graphics an whose
-#' content can be automatically inserted in .rmd or in slides with slidify.
-#'  Currently the structure of this code for lack of time does not allow that
+#' In view of such an evolution an experimentation has been started 
+#' already in this version putting the results of the analysis in 
+#' data frames to allow easy production of plots in ggplot2,
+#' NB the dataframes currently built (with an advanced "trick" to 
+#' need to have their metadata cleaned, to be done in next iterations)
 
 
 # suppressWarnings(suppressMessages(library(data.table)))
@@ -53,42 +55,39 @@ options(warn=1)
 alpha <- 0.05
 cap <- FALSE # whether to cap outliers or not
 
-test_run <- FALSE # whether to run eventual test/debug functions
-show_plots <- FALSE # mostly used not to show some plots that take time
+test_run   <- FALSE # whether to run eventual test/debug functions
+show_plots <- FALSE # mostly not to show some plots that take time
 
 # data files
 articles_fname <- "article_master.txt"
-sales_fname <- "sales.txt"
+sales_fname    <- "sales.txt"
 field_sep <- ";"
 
 
 nr_top_items <- 5 # nr of best performing items reported
 
 
-# -- reduce risk of typos
+# -- Regions/Countries
+france   <- "France";
+germany  <-"Germany";
+austria  <-"Austria"; 
+mcountry <-"mcountry"; # pseudo-country, analyze all data/countries together
 
-france <- "France";
-germany <-"Germany";
-austria <-"Austria"; 
-mcountry="mcountry"; # pseudo-country, analyze all data/countries together
-
-
+# --- Discount types
 discount <- "discount"
-media <- "media"
-store <- "store"
+media    <- "media"
+store    <- "store"
 
 
 # ------------------------------------------------------------------
-# --- Data Frames to contain resuls and helper functions -----------
+# --- Data Frames to contain results and helper functions -----------
 # ------------------------------------------------------------------
-# data frames were meant to 
+# data frames meant, in next releases, to 
 # - easily produce graphs and plots with ggplot2
 # - be displayed in .rmd/slidify documents
-# for lack of time has not been possible to use ggplot2, .rmd/slidy 
 
 
-# general (not generic as mean in R) service function for data frames
-# must be here among data for things to work
+# general service function for data frames
 # ------------------------------------------------------------------
 #' Append new row to any data-frame and
 #' if passed (by col. name or col. number) set some values in it
@@ -138,7 +137,7 @@ add_df_row <- function(df,fnames,fvalues,col_idxes,col_values) {
 
 
 
-# --- Effect of discounts and promostons
+# --- Effect of discounts and promotions
 # --- results of analysis
 promo_effect_df <- data.frame(
   country = character()
@@ -175,7 +174,8 @@ res_topgroups_df <- data.frame(
 # easily add a new row of data 
 res_top_group_add <- function( country,values,totcountrysales) {
   
-  v <- as.data.frame(values) # data tables don't work well with subsetting&lvels together
+  v <- as.data.frame(values) # data table was not comfortable with 
+  # subsetting&levels together
   levelschar <- as.character(levels(v[,1]))
   levelschar[which(levelschar == "HARDWARE ACCESSORIES")] <- "HW ACCS."
 
@@ -203,11 +203,16 @@ res_priceopt_df <- data.frame(
 )
 # helper for data frame top_groups_df
 # easily add a new row of data 
-res_priceopt_add <- function(country, article, price_recomm,price_optim,profit_cur,profit_optim) {
+res_priceopt_add <- function(country, article, price_recomm
+                             ,price_optim,profit_cur,profit_optim) {
   
-  fnames   <- c("country","article","price_recomm","price_optim","profit_cur","profit_optim","profit_delta_pct")
-  fvalues <-list(country,  article,  price_recomm,  round(price_optim,2),  round(profit_cur,0)
-    , round(profit_optim,0),round(profit_optim/profit_cur*100-100,2))
+  fnames   <- c("country","article","price_recomm","price_optim"
+                ,"profit_cur","profit_optim","profit_delta_pct")
+  fvalues <-list(country,  article,  price_recomm
+                 ,round(price_optim,2),round(profit_cur,0) 
+                 , round(profit_optim,0)
+                 ,round(profit_optim/profit_cur*100-100,2))
+  
   res_priceopt_df <<- add_df_row(res_priceopt_df, fnames, fvalues)
 }
 
@@ -223,6 +228,8 @@ res_artgrouppredict_df <- data.frame(
   ,nr_week_data_expected = integer()
   ,nr_week_data_available = integer()
 )
+
+
 # helper for data frame top_groups_df
 # easily add a new row of data 
 res_artgrouppredict_add <- function( country,article,sales_predict,sales_past_average
@@ -244,8 +251,9 @@ res_artgrouppredict_add <- function( country,article,sales_predict,sales_past_av
 #' Data Load and Preprocessing
 #' Operates globally (all data read, all countries)
 #' 
-#' @return data frame with all sales data joined to articles master data,
-#' with some variables renamed for readability, some added to work more easily
+#' @return data frame with sales data joined to articles master data,
+#' with some variables renamed for readability, some variables added 
+#' to work more easily
 #' @author Enrico
 #' @details
 #' Reads the data files, joins the sales and articles data, 
@@ -255,9 +263,11 @@ load_preprocess_alldata <- function() {
 
   # read articles data
   articles_df <- read.csv(articles_fname, sep = field_sep)
-  articles_df$article <- as.character(articles_df$article) # should not be factors
+  articles_df$article <- as.character(articles_df$article) 
+  # should not be factors, TODO address data whe reading file
   
-  # read sales data. The if/"lazy read" worked when this code was not in a function,
+  # read sales data.
+  # The if/"lazy read" worked when this code was not in a function,
   # it does NOT perform lazy load now inside a function (quickly) 
   # for the time being keep it just in case
   if (!exists(deparse(substitute(sales_df))) || is.null(sales_df) 
@@ -311,7 +321,8 @@ load_preprocess_alldata <- function() {
   art_sales_df <- inner_join(sales_df,articles_df,by = "article")
   
   # -- ensure dates have date type ---
-  art_sales_df$retailweek <- as.POSIXct(strptime(as.character(art_sales_df$retailweek), "%Y-%m-%d"))
+  art_sales_df$retailweek <- as.POSIXct(
+    strptime(as.character(art_sales_df$retailweek), "%Y-%m-%d"))
   art_sales_df$retailweek <- art_sales_df$retailweek[order(art_sales_df$retailweek)]
   # head(art_sales_df$retailweek);tail(art_sales_df$retailweek) # paranoid check
   
@@ -344,7 +355,8 @@ load_preprocess_alldata <- function() {
 
   # --- calculate some global values. NB might not actually need/use them ----
   art_sales_dt <-  data.table(art_sales_df)
-  sales_country <- art_sales_dt[ , list(sales = sum(sales), sales_avg = mean(sales)) ,by=list(country)]
+  sales_country <- art_sales_dt[ , list(sales = sum(sales)
+      , sales_avg = mean(sales)) ,by=list(country)]
   
   sales_tot_allcountries <-sum(art_sales_dt$sales)
 
@@ -357,7 +369,7 @@ load_preprocess_alldata <- function() {
 # ------------------------------------------------------------------
 #' Analyzes data performing all functions requested
 #' @param country_name
-#' Country whose data are in the dataset art_sales_df passed as parameter
+#' Country/region data in art_sales_df parameter
 #' note that also the global data_set can be passed as a pseudo-country
 #' (mcountry)
 #' @return currently no real return value for lack of time, this may change
@@ -366,10 +378,10 @@ load_preprocess_alldata <- function() {
 #' Currently dirty, operates by side-effects, if there were/will be time 
 #' the results of the analysis should go in data-frames to feed directly
 #' ggplot graphics
-#' CAVEAT: in some places a normal data frame, in other a data.table, just
-#' to write more easily, no real/semantic difference, no special reason
-#' just untidiness due to hurry
-#' IF time available will tidy up and use always and only one  data structure
+#' CAVEAT: in some places a normal data frame, in other a data.table, 
+#' this just to write more easily, no real/semantic difference and 
+#' no special reason just untidiness due to hurry
+#' TODO tidy up and use always and only one  data structure
 # ------------------------------------------------------------------
 analyze <- function(country_name, art_sales_df) {
 
@@ -503,11 +515,14 @@ analyze <- function(country_name, art_sales_df) {
   if (data_weeks_avail != data_weeks_expected) {
     cat("\nFORECAST above is UNRELIABLE due to ",data_weeks_expected-data_weeks_avail,"weeks of data missing\n")
   }
+  m <- paste(country_name,"#Items Sales Month Forecast",round(fcast$mean[1],0),"\n(past mean:"
+             ,round(sales_avg_month,0),")")
+  #print(fcast$mean[1])
+  par(mfrow=c(1,1));plot(fcast,main = m)
+  invisible(readline(prompt="Press [enter] to continue"))
+  # qplot(fcast)
+  # invisible(readline(prompt="Press [enter] to continue"))
   
-  print(fcast$mean[1])
-  par(mfrow=c(1,1));plot(fcast)
-  
-
   
   #--------------------------------------------------------------------
   #               PRICE OPTIMIZATION
